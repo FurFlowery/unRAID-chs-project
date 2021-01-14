@@ -48,6 +48,15 @@ Gitee源由于Gitee将插件的txz包当作shell处理提供给unraid，导致�
   
 修复问题  
 1、修复翻译细节  
+
+### 插件翻译  
+
+1、插件商店Community Applications  
+2、系统温度Dynamix System Temperature  
+3、未分配设备Unassigned Devices  
+4、自动更新CA Auto Update Applications  
+5、系统状态Dynamix System Statistics   
+待添加......
   
 ### sftp上传方式:
 在unraid启动完成后 利用winscp等软件 连接到unraid ssh 将文件复制到 /usr/local/emhttp/plugins 中. 刷新页面即可.
