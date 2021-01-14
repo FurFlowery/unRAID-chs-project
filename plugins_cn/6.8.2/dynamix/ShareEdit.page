@@ -1,0 +1,394 @@
+Menu="Share:1"
+Title="Share 设置"
+Tag="share-alt-square"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = [123,300];
+
+if ($name == "") {
+  /* default values when adding new share */
+  $share = ["nameOrig"   => "",
+            "name"       => "",
+            "comment"    => "",
+            "allocator"  => "highwater",
+            "floor"      => "",
+            "splitLevel" => "",
+            "include"    => "",
+            "exclude"    => "",
+            "useCache"   => "no",
+            "cow"        => "auto"];
+} elseif (array_key_exists($name, $shares)) {
+  /* edit existing share */
+  $share = $shares[$name];
+} else {
+  /* handle share deleted case */
+  echo "<p class='notice'>共享 ".htmlspecialchars($name)." 已被删除.</p><input type='button' value='完成' onclick='done()'>";
+  return;
+}
+
+/* check for empty share */
+function shareEmpty($name) {
+  return (($files = @scandir('/mnt/user/'.$name)) && (count($files) <= 2));
+}
+
+function globalInclude($name) {
+  global $var;
+  return substr($name,0,4)=='disk' && (!$var['shareUserInclude'] || strpos("{$var['shareUserInclude']},","$name,")!==false);
+}
+
+// global shares include/exclude
+$disks = array_filter($disks,'my_disks');
+$myDisks = array_filter(array_diff(array_keys($disks), explode(',',$var['shareUserExclude'])), 'globalInclude');
+?>
+> A *Share*, also called a *User Share*, is simply the name of a top-level directory that exists on one or more of your
+> storage devices (array and cache).  Each share can be exported for network access.  When browsing a share, we return the
+> composite view of all files and subdirectories for which that top-level directory exists on each storage device.
+>
+> *Read settings from* is used to preset the settings of the new share with the settings of an existing share.
+>
+> Select the desired share name and press **Read** to copy the settings from the selected source.
+<?if ($name):?>
+>
+> *Write settings to* is used to copy the settings of the current share to one or more other existing shares.
+>
+> Select the desired destinations and press **Write** to copy the settings to the selected shares.
+<?endif;?>
+
+<div id="" class="clone1">
+<span class="clone">从中读取设置</span><i class="fa fa-arrow-left clone"></i>
+<select name="readshare" size="1" class="clone" onchange="toggleButton('readshare',false)">
+<option disabled selected>选择...</option>
+<?
+foreach ($shares as $list) if ($list['name']!=$name || !$name) echo mk_option("", $list['name'], $list['name']);
+?>
+</select><input type="button" id="readshare" value="读取" class="clone" onclick="readShare()" disabled>
+</div>
+<?if ($name):?>
+<div id="" class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="s3" name="writeshare" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeshare',this.id)">
+<?
+$rows = [];
+foreach ($shares as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], $list['name']);
+if ($rows) echo "<可选>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writeshare" value="写入" class="clone" onclick="writeShare()" disabled>
+</div>
+<?endif;?>
+
+<form markdown="1" name="share_edit" method="POST" action="/update.htm" target="progressFrame" onsubmit="return prepareEdit(this)"<?=$name?" onchange=\"toggleButton('writeshare',true);$('#s3').dropdownchecklist('disable')\">":">"?>
+<input type="hidden" name="shareNameOrig" value="<?=htmlspecialchars($share['nameOrig'])?>">
+
+共享名:
+: <input type="text" name="shareName" maxlength="40" value="<?=htmlspecialchars($name)?>" pattern="^[^/\\]*$" title="不允许斜线">
+
+> 共享名称最多可以包含 40 个字符, 并且区分大小写, 并具有以下限制:
+>
+> * 不能包含双引号字符 (")
+> * 不能是保留的共享名称之一: flash, cache, cach2, .., disk1, disk2, ..
+>
+> 强烈建议您简化生活并避免使用特殊字符.
+
+描述:
+: <input type="text" name="shareComment" maxlength="256" value="<?=htmlspecialchars($share['comment'])?>">
+
+> 您喜欢的任何字符, 最多 256 个字符.
+
+分配方式:
+: <select name="shareAllocator" size="1">
+  <?=mk_option($share['allocator'], "highwater", "High-water")?>
+  <?=mk_option($share['allocator'], "fillup", "Fill-up")?>
+  <?=mk_option($share['allocator'], "mostfree", "Most-free")?>
+  </select>
+
+> 此设置确定在创建新文件或目录时, Unraid OS 如何选择要使用的磁盘:
+>
+> **High-water**
+> Choose the lowest numbered disk with free space still above the current *high water mark*.  The
+> *high water mark* is initialized with the size of the largest data disk divided by 2.  If no disk
+> has free space above the current *high water mark*, divide the *high water mark* by 2 and choose again.
+>
+> The goal of **High-water** is to write as much data as possible to each disk (in order to minimize
+> how often disks need to be spun up), while at the same time, try to keep the same amount of free space on
+> each disk (in order to distribute data evenly across the array).
+>
+> **Fill-up**
+> Choose the lowest numbered disk that still has free space above the current **Minimum free space**
+> setting.
+>
+> **Most-free**
+> 选择当前具有最大可用空间的磁盘.
+
+最小剩余空间:
+: <input type="text" name="shareFloor" maxlength="16" value="<?=htmlspecialchars($share['floor'])?>">
+
+> The *minimum free space* available to allow writing to any disk belonging to the share.<br>
+>
+> Choose a value which is equal or greater than the biggest single file size you intend to copy to the share.
+> Include units KB, MB, GB and TB as appropriate, e.g. 10MB.
+
+拆分级别:
+: <select name="shareSplitLevel" size="1">
+  <?=mk_option($share['splitLevel'], "", "根据需要自动拆分任何目录")?>
+  <?=mk_option($share['splitLevel'], "1", "根据需要仅自动拆分顶级目录")?>
+  <?=mk_option($share['splitLevel'], "2", "根据需要仅自动拆分前两级目录")?>
+  <?=mk_option($share['splitLevel'], "3", "根据需要仅自动拆分前三级目录")?>
+  <?=mk_option($share['splitLevel'], "4", "根据需要仅自动拆分前四级目录")?>
+  <?=mk_option($share['splitLevel'], "5", "根据需要仅自动拆分前五级目录")?>
+  <?=mk_option($share['splitLevel'], "0", "手动:不自动拆分目录")?>
+  </select>
+
+> Determines whether a directory is allowed to expand onto multiple disks.
+
+> **Automatically split any directory as required**
+> When a new file or subdirectory needs to be created in a share, Unraid OS first chooses which disk
+> it should be created on, according to the configured *Allocation method*.  If the parent directory containing
+> the new file or or subdirectory does not exist on this disk, then Unraid OS will first create all necessary
+> parent directories, and then create the new file or subdirectory.
+>
+> **Automatically split only the top level directory as required**
+> When a new file or subdirectory is being created in the first level subdirectory of a share, if that first
+> level subdirectory does not exist on the disk being written, then the subdirectory will be created first.
+> If a new file or subdirectory is being created in the second or lower level subdirectory of a share, the new
+> file or subdirectory is created on the same disk as the new file or subdirectory's parent directory.
+>
+> **Automatically split only the top "N" level directories as required**
+> Similar to previous: when a new file or subdirectory is being created, if the parent directory is at level "N",
+> and does not exist on the chosen disk, Unraid OS will first create all necessary parent directories.  If the
+> parent directory of the new file or subdirectory is beyond level "N", then the new file or subdirectory is
+> created on the same disk where the parent directory exists.
+>
+> **Manual: do not automatically split directories**
+> When a new file or subdirectory needs to be created in a share, Unraid OS will only consider disks where the
+> parent directory already exists.
+
+包含的磁盘:
+: <select id="s1" name="shareInclude" size="1" multiple="multiple" style="display:none">
+  <?foreach ($myDisks as $disk):?>
+  <?=mk_option_luks($disk, $share['include'], strstr($disks[$disk]['fsType'],':',true))?>
+  <?endforeach;?>
+  </select>
+
+> Specify the disks which can be used by the share. By default all disks are included; that is, if specific
+> disks are not selected here, then the share may expand into *all* array disks.
+
+排除的磁盘:
+: <select id="s2" name="shareExclude" size="1" multiple="multiple" style="display:none">
+  <?foreach ($myDisks as $disk):?>
+  <?=mk_option_luks($disk, $share['exclude'], strstr($disks[$disk]['fsType'],':',true))?>
+  <?endforeach;?>
+  </select>
+
+> Specify the disks which can *not* be used by the share. By default no disks are excluded.
+
+使用缓存 (用于新文件/目录):
+: <select name="shareUseCache" size="1" onchange="setDiskList(this.value) ; setMoverAction(this.value)">
+  <?=mk_option($share['useCache'], "no", "否")?>
+  <?=mk_option($share['useCache'], "yes", "是")?>
+  <?=mk_option($share['useCache'], "only", "唯一")?>
+  <?=mk_option($share['useCache'], "prefer", "首选")?>
+  </select><span id="moverAction"></span>
+
+> 指定是否可以将写入到共享上的新文件和目录写入缓存磁盘/池 (如果存在).  
+> 此设置还影响 *搬家程序* 的行为.
+>
+> **否** 禁止将新文件和子目录写入缓存磁盘/池.  
+> *搬家程序* 不会执行任何操作, 因此缓存中此共享的任何现有文件都保留在那里.
+>
+> **是** 将所有新文件和子目录写入缓存磁盘/池，
+> 前提是缓存磁盘/池上存在足够的可用空间.
+> 如果缓存磁盘/池空间不足, 则在阵列上创建新文件和目录.  
+> 调用 *搬家程序* 时, 文件和子目录将从缓存磁盘/池转移到阵列上.
+>
+> **唯一** 将所有新文件和子目录写入缓存磁盘/池.  
+> 如果缓存磁盘/池上的可用空间不足, *创建* 操作将失败，并显示 *空间不足* 的状态.  
+> *搬家程序* 将不执行任何操作, 因此阵列上此共享的任何现有文件都保留在那里.
+>
+> **首选** 将所有新文件和子目录写入缓存磁盘/池, 
+> 前提是缓存磁盘/池上存在足够的可用空间.
+> 如果缓存磁盘/池空间不足, 则在阵列上创建新文件和目录.  
+> 当调用 *搬家程序* 时，文件和子目录将从阵列转移到缓存磁盘/池中.
+>
+> **注意:** 搬家程序永远不会移动当前正在使用的任何文件.  
+> This means if you want to move files associated with system services such as Docker or VMs then you need to
+> 这意味着, 如果要移动与系统服务 (如 Docker 或 虚拟机) 关联的文件, 则需要在搬家程序运行时禁用这些服务.  
+
+启用复制时写入:
+: <select name="shareCOW" size="1"<?if ($name):?> disabled<?endif;?>>
+  <?=mk_option($share['cow'], "no", "否")?>
+  <?=mk_option($share['cow'], "auto", "自动")?>
+  </select><?if ($name):?>仅在添加新共享时设置.<?endif;?>
+
+> 设置 **否** 将导致在使用 *btrfs* 文件系统格式化的设备上创建时在
+> 共享目录上设置 *btrfs* NOCOW (写入时不复制) 属性. 设置后, 设备上新创建
+> 的文件和子目录将继承NOCOW属性. 对于用于存储虚拟磁盘映像 (包括 Docker Loopback 映像文件) 
+> 的共享, 建议使用此设置. 此设置对非 btrfs 文件系统没有影响.
+>
+>
+> 对于正常操作, 设置为 **自动**, 这意味着 COW **将** 在使用 *btrfs* 格式化的设备上生效.
+
+<?if (!$name):?>
+&nbsp;
+: <input type="submit" name="cmdEditShare" value="Add Share"><input type="button" value="完成" onclick="done()">
+<?elseif (shareEmpty($name)):?>
+共享状态:
+: <span class="big">共享为空</span>
+
+> 共享不包含任何数据, 如果不再需要, 可以删除.
+
+删除<input type="checkbox" name="confirmDelete" onchange="chkDelete(this.form, this.form.cmdEditShare);">
+: <input type="submit" name="cmdEditShare" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+<?else:?>
+共享状态:
+: <span class="big">共享容器数据</span>
+
+> 只要共享包含数据, 就不能删除它. 请注意, 有些数据可能会被隐藏. 另请参见 [SMB 设置](/Settings/SMB) -> 隐藏 "点" 文件.
+
+&nbsp;
+: <input type="submit" name="cmdEditShare" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+<?endif;?>
+</form>
+<script>
+$(function() {
+  initDropdown(false,true);
+<?if ($tabbed):?>
+  $('#tab1').bind({click:function(){initDropdown(true,true);}});
+<?endif;?>
+  setDiskList(document.share_edit.shareUseCache.value);
+  setMoverAction(document.share_edit.shareUseCache.value);
+  presetSpace(document.share_edit.shareFloor);
+});
+function initDropdown(remove,create) {
+  if (remove) {
+    $('#s1').dropdownchecklist('destroy');
+    $('#s2').dropdownchecklist('destroy');
+<?if ($name):?>
+    $('#s3').dropdownchecklist('destroy');
+<?endif;?>
+  }
+  if (create) {
+    $('#s1').dropdownchecklist({emptyText:'全部', width:<?=$width[1]?>, explicitClose:'...关闭'});
+    $('#s2').dropdownchecklist({emptyText:'无', width:<?=$width[1]?>, explicitClose:'...关闭'});
+<?if ($name):?>
+    $("#s3").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+<?endif;?>
+  }
+}
+function setDiskList(cache) {
+  var onOff = cache=='only' ? 'disable':'enable';
+  $('#s1').dropdownchecklist(onOff);
+  $('#s2').dropdownchecklist(onOff);
+}
+function setMoverAction(cache) {
+  var textAction;
+  switch (cache) {
+  case 'yes':  textAction = '搬家程序将文件从缓存传输到阵列'; break;
+  case 'prefer': textAction = '搬家程序将文件从阵列传输到缓存'; break;
+  default:  textAction = '搬家程序不工作'; break;
+  }
+  document.getElementById("moverAction").innerHTML=textAction;
+}
+function presetSpace(shareFloor) {
+  var unit = ['KB','MB','GB','TB','PB'];
+  var scale = shareFloor.value;
+  if (scale.replace(/[0-9.,\s]/g,'').length>0) return;
+  var base = scale>0 ? Math.floor(Math.log(scale)/Math.log(1000)):0;
+  if (base>=unit.length) base = unit.length-1;
+  shareFloor.value = (scale/Math.pow(1000, base))+unit[base];
+}
+// Compose input fields
+function prepareEdit(form) {
+// Test share name validity
+  var share = form.shareName.value.trim();
+  if (share.length==0) {
+    swal('缺少共享名', '请输入共享名称', 'error');
+    return false;
+  }
+  if (share.match('^(disk[0-9]+|cache[0-9]*|flash)$')) {
+    swal('无效的共享名', '不要使用保留名称', 'error');
+    return false;
+  }
+  form.shareName.value = share;
+// Adjust minimum free space value to selected unit
+  var unit = 'KB,MB,GB,TB,PB';
+  var scale = form.shareFloor.value;
+  var index = unit.indexOf(scale.replace(/[0-9.,\s]/g,'').toUpperCase());
+  form.shareFloor.value = scale.replace(/[A-Z\s]/gi,'') * Math.pow(1000, (index>0 ? index/3 : 0))
+// Return include as single line input
+  var include = '';
+  for (var i=0,item; item=form.shareInclude.options[i]; i++) {
+    if (item.selected) {
+      if (include.length) include += ',';
+      include += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.shareInclude.options[0];
+  item.value = include;
+  item.selected = true;
+// Return exclude as single line input
+  var exclude = '';
+  for (var i=0,item; item=form.shareExclude.options[i]; i++) {
+    if (item.selected) {
+      if (exclude.length) exclude += ',';
+      exclude += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.shareExclude.options[0];
+  item.value = exclude;
+  item.selected = true;
+  return true;
+}
+function readShare() {
+  var form = document.share_edit;
+  var name = $('select[name="readshare"]').val();
+  initDropdown(true,false);
+  $.get('/webGui/include/ShareData.php',{name:name},function(json) {
+    var data = $.parseJSON(json);
+    form.shareAllocator.value = data.allocator;
+    form.shareFloor.value = data.floor;
+    form.shareSplitLevel.value = data.splitLevel;
+    form.shareInclude.value = data.include;
+    form.shareExclude.value = data.exclude;
+    form.shareUseCache.value = data.useCache;
+    form.shareCOW.value = data.cow;
+    for (var i=0,disk; disk=data.include.split(',')[i]; i++) for (var j=0,include; include=form.shareInclude.options[j]; j++) if (include.value==disk) include.selected=true;
+    for (var i=0,disk; disk=data.exclude.split(',')[i]; i++) for (var j=0,exclude; exclude=form.shareExclude.options[j]; j++) if (exclude.value==disk) exclude.selected=true;
+    initDropdown(false,true);
+  });
+  $(form).find('select').trigger('change');
+}
+function writeShare() {
+  var data = {}, copied = false;
+  data.shareAllocator = '<?=addslashes(htmlspecialchars($share['allocator']))?>';
+  data.shareFloor = '<?=addslashes(htmlspecialchars($share['floor']))?>';
+  data.shareSplitLevel = '<?=addslashes(htmlspecialchars($share['splitLevel']))?>';
+  data.shareInclude = '<?=addslashes(htmlspecialchars($share['include']))?>';
+  data.shareExclude = '<?=addslashes(htmlspecialchars($share['exclude']))?>';
+  data.shareUseCache = '<?=addslashes(htmlspecialchars($share['useCache']))?>';
+  data.cmdEditShare = 'Apply';
+  $('select#s3 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareNameOrig = $(this).val();
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'共享设置已克隆到所选共享',type:'success'},function(){refresh();});
+}
+</script>

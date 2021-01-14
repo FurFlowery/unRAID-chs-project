@@ -1,0 +1,651 @@
+Menu="Main:5"
+Title="阵列操作"
+Tag="snowflake-o"
+---
+<?PHP
+/* Copyright 2005-2020, Lime Technology
+ * Copyright 2012-2020, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$keyfile = file_exists($var['luksKeyfile']);
+$missing = file_exists('/var/tmp/missing.tmp');
+$encrypt = false;
+/* only one of $present, $missing, or $wrong will be true, or all will be false */
+$forced = $present = $wrong = false;
+foreach ($disks as $disk) {
+  if (strpos($disk['fsType'],'luks:')!==false || ($disk['fsType']=='auto' && (strpos($var['defaultFsType'],'luks:')!==false || $disk['luksState']==2 || $disk['luksState']==3))) {
+    $encrypt = true;
+    if ($disk['luksState']==0) $forced = true;
+    if ($disk['luksState']==1) $present = true;
+    if ($disk['luksState']==2) $missing = true;
+    if ($disk['luksState']==3) $wrong = true;
+  }
+}
+if ($forced && ($present || $missing || $wrong)) $forced = false;
+
+function check_encryption() {
+  global $forced, $missing, $wrong;
+  if ($forced) $status = "输入新的密钥";
+  elseif ($missing) $status = "缺少密钥";
+  elseif ($wrong) $status = "错误的密钥";
+  else return;
+  echo "<tr><td></td><td class='gap'>加密状态:</td><td><span class='red-text'>$status</span><span id='pass'><input name='luksReformat' type='checkbox' onchange='selectInput(this.form)'>允许重新格式化</span></td></tr>";
+  echo "<tr><td></td><td class='gap'>加密输入:</td><td>";
+  echo "<select name='input' size='1' onchange='selectInput(this.form)'>";
+  echo mk_option(1,'text','密码');
+  echo mk_option(1,'file','密钥文件');
+  echo "</select></td></tr>";
+  echo "<tr id='text'><td></td><td class='gap'>密码:</td><td><input type='password' name='text' maxlength='512' value='' onkeyup='selectInput(this.form)'><input name='showPass' type='checkbox' onchange='selectInput(this.form)'>显示密码</td></tr>";
+  echo "<tr id='copy'><td></td><td class='gap'>重新输入密码:</td><td><input type='password' name='copy' maxlength='512' value='' onkeyup='selectInput(this.form)'></td></tr>";
+  echo "<tr id='file'><td></td><td class='gap'>密钥文件:</td><td><input type='file' name='local' onchange='getFileContent(event,this.form)'></td></tr>";
+}
+function maintenance_mode() {
+  echo "<tr>";
+  echo "<td></td>";
+  echo "<td><input type='checkbox' name='startMode' value='Maintenance'>维护模式</td>";
+  echo "<td><strong>维护模式</strong> - 如果选中, 则会启动阵列, 但不会挂载磁盘.</td>";
+  echo "</tr>";
+}
+function status_indicator() {
+  global $var;
+  switch ($var['mdColor']) {
+   case 'green-on': $orb = 'circle'; $color = 'green'; $help = '已启动, 阵列受保护'; break;
+   case 'green-blink': $orb = 'circle'; $color = 'grey'; $help = '已停止'; break;
+   case 'yellow-on': $orb = 'warning'; $color = 'yellow'; $help = '已启动, 阵列未受保护'; break;
+   case 'yellow-blink': $orb = 'warning'; $color = 'grey'; $help = '已停止'; break;
+  }
+  echo "<a class='info'><i class='fa fa-$orb orb $color-orb'></i><span>$help</span></a>";
+}
+function missing_cache() {
+  global $disks;
+  $missing = false;
+  foreach ($disks as $disk) if ($disk['type']=='Cache') $missing |= (strpos($disk['status'],'_MISSING')!==false);
+  return $missing;
+}
+?>
+<style>
+tr#copy,tr#file{display:none}
+td.gap{padding-left:26px!important}
+span#pass{display:none;margin-left:20px}
+</style>
+<script src="<?autov('/webGui/javascript/jquery.base64.js')?>"></script>
+<script>
+var ctrl = "<span class='status <?=$tabbed?'':'vhshift'?>'><a style='cursor:pointer' class='tooltip_diskio' title='切换 读/写 显示' onclick='toggle_diskio();return false'><i class='toggle fa'></i></a></span>";
+
+function selectInput(form) {
+<?if ($wrong && $keyfile):?>
+  form.input.value = 'file';
+  form.input.disabled = true;
+<?endif;?>
+  if (form.input.value == 'text') {
+    form.file.value = '';
+    form.local.value = '';
+<?if ($forced):?>
+    $('#text').show();
+    $('#copy').show();
+    $('#pass').hide();
+<?elseif ($missing):?>
+    $('#text').show();
+    $('#copy').hide();
+    $('#pass').hide();
+<?elseif ($wrong):?>
+    $('#text').show();
+    if ($('input[name="luksReformat"]').prop('checked')) $('#copy').show(); else $('#copy').hide();
+    $('#pass').show();
+<?endif;?>
+    $('#file').hide();
+    $('input[name="text"],input[name="copy"]').attr('type',$('input[name="showPass"]').prop('checked')?'text':'password');
+    $('#cmdStart').prop('disabled',$('#copy').is(':visible') ? (form.text.value!=form.copy.value || form.text.value=='') : form.text.value=='');
+  } else {
+    form.text.value = '';
+    form.copy.value = '';
+    $('#text').hide();
+    $('#copy').hide();
+    $('#file').show();
+<?if ($wrong):?>
+    $('#pass').show();
+<?else:?>
+    $('#pass').hide();
+<?endif;?>
+    $('#cmdStart').prop('disabled',!form.file.value);
+  }
+}
+function getFileContent(event,form) {
+  var input = event.target;
+  var reader = new FileReader();
+  reader.onload = function(){form.file.value=reader.result;selectInput(form);};
+  reader.readAsDataURL(input.files[0]);
+}
+function prepareInput(form) {
+  $(form).append('<input type="hidden" name="cmdStart" value="Start">');
+  if (form.input === undefined) {
+    form.submit();
+    return;
+  }
+  form.input.disabled = true;
+  form.local.disabled = true;
+  form.file.disabled = true;
+  form.text.disabled = true;
+  form.copy.disabled = true;
+  if (form.text.value) {
+    var valid = new RegExp('^[ -~]+$');
+    if (valid.test(form.text.value)) {
+      $(form).append('<input type="hidden" name="luksKey" value="'+base64(form.text.value)+'">');
+      form.submit();
+    } else {
+      form.input.disabled = false;
+      form.local.disabled = false;
+      form.file.disabled = false;
+      form.text.disabled = false;
+      form.copy.disabled = false;
+      swal({title:'Printable Characters Only',text:'Use <b>ASCII</b> characters from space " " to tilde "~"<br>Otherwise use the <b>keyfile</b> method for UTF8 input',html:true,type:'error'});
+    }
+    return;
+  }
+  var data = {};
+  data['#file'] = 'unused';
+  data['#include'] = 'webGui/include/KeyUpload.php';
+  data['file'] = form.file.value;
+  $.post('/update.php',data,function(){form.submit();});
+}
+function parityWarning(form) {
+  if (form.md_invalidslot.checked) {
+<?if (strpos($disks['parity2']['status'],'_NP')===false):?>
+    var text = '<i>双奇偶有效</i> 需要其原始插槽中的 <b>所有</b> 磁盘';
+<?else:?>
+    var text = '<i>奇偶有效</i> 需要 <b>所有</b> 磁盘具有其原始内容';
+<?endif;?>
+  } else {
+    var text = '<i>奇偶</i> 磁盘内容将被覆盖';
+  }
+  swal({title:'继续开始',text:text,html:true,type:'warning',confirmButtonText:'继续',showCancelButton:true},function(){prepareInput(form);});
+}
+function tab0() {
+  $.removeCookie('one',{path:'/'});
+  $.cookie('tab','tab0',{path:'/'});
+}
+function parityStatus() {
+  $.post('/webGui/include/DeviceList.php',{path:'<?=$path?>',device:'parity'},function(data) {
+    if (data) {$.each(data.split(';'),function(k,v) {if ($('#line'+k).length>0) $('#line'+k).html(v);});}
+    timers.parityStatus = setTimeout(parityStatus,3000);
+    if (!data && $('#cancelButton').length>0 && $('#cancelButton').val()=='Cancel') {
+      $('#cancelButton').val('Done').prop('onclick',null).off('click').click(function(){refresh();});
+      $('#cancelText').html('');
+      $('#line4').html('已完成');
+    }
+  });
+}
+function stopArray(form) {
+  $(form).append('<input type="hidden" name="cmdStop" value="停止">');
+<?if ($confirm['stop']):?>
+  swal({title:'继续?',text:'这将停止阵列',type:'warning',showCancelButton:true},function(p){if (p) form.submit(); else $('input[name="cmdStop"]').remove();});
+<?else:?>
+  form.submit();
+<?endif;?>
+}
+function stopParity(form,text) {
+  $(form).append('<input type="hidden" name="cmdNoCheck" value="Cancel">');
+<?if ($confirm['stop']):?>
+  swal({title:'继续?',text:'这将停止运行'+text+' operation',type:'warning',showCancelButton:true},function(p){if (p) form.submit(); else $('input[name="cmdNoCheck"]').remove();});
+<?else:?>
+  form.submit();
+<?endif;?>
+}
+function pauseParity(form) {
+  $(form).append('<input type="hidden" name="cmdNoCheck" value="Pause">');
+  $('#pauseButton').val('Resume').prop('onclick',null).off('click').click(function(){resumeParity(form);});
+  form.submit();
+}
+function resumeParity(form) {
+  $(form).append('<input type="hidden" name="cmdCheck" value="Resume">');
+  $('#pauseButton').val('Pause').prop('onclick',null).off('click').click(function(){pauseParity(form);});
+  form.submit();
+}
+function shutdown_now(form,cmd) {
+  $(form).append('<input type="hidden" name="cmd" value="'+cmd+'">');
+<?if ($confirm['down']):?>
+  swal({title:'继续？',text:'这将 '+cmd+' 系统',type:'warning',showCancelButton:true},function(p){if (p) form.submit(); else $('input[name="cmd"]').remove();});
+<?else:?>
+  form.submit();
+<?endif;?>
+}
+function toggleApply(checked) {
+  $('input[name="#apply"]').prop('disabled',!checked);
+}
+parityStatus();
+<?if ($tabbed):?>
+$('.tabs').append(ctrl);
+if ($.cookie('tab')=='tab0') $('i.toggle').hide();
+$('#tab'+$('input[name$="tabs"]').length).click(function(){tab0(); $('i.toggle').hide('slow');});
+<?else:?>
+$('div[id=title]:not(":last, .disable_diskio")').each(function(){$(this).append(ctrl);});
+<?endif;?>
+<?if (substr($var['fsState'],-3)=='ing'):?>
+function reload_page() {
+  $.get('/webGui/include/ReloadPage.php',function(data) {
+    switch (data) {
+    case 'wait':
+      setTimeout(reload_page,10000);
+    break;
+    case 'stop':
+      setTimeout(refresh,0);
+    break;
+    default:
+      if (data) $('#fsState').html(data);
+      setTimeout(reload_page,3000);
+    break;
+    }
+  });
+}
+reload_page();
+<?endif;?>
+$('.tooltip_diskio').tooltipster({delay:100,trigger:'custom',triggerOpen:{mouseenter:true},triggerClose:{click:false,scroll:true,mouseleave:true}});
+toggle_diskio(true);
+<?
+$parity = $var['mdResync'] ? '<br><small>已禁用 -- 奇偶操作正在运行</small>' : '';
+$mover = file_exists('/var/run/mover.pid') ? '<br><small>已禁用 -- 搬家程序正在运行</small>' : '';
+$btrfs = exec('pgrep -cf /sbin/btrfs') ? '<br><small>已禁用 -- BTRFS 操作正在运行</small>' : '';
+?>
+$(function(){
+  var form = document.arrayOps;
+  if (form.input !== undefined) selectInput(form);
+});
+function formatWarning(val) {
+  if (val==true)
+    swal({
+      title: '格式化不可卸载的磁盘',
+      text: '在显示为 <b>不可卸载的</b> 磁盘上创建一个空文件系统, 丢弃当前磁盘上的所有数据并更新奇偶校验以反映这一点. '
+           + '这通常是在将新磁盘添加到阵列以使其准备好写入文件时完成的.<br/>'
+           + '<p><br/><b>警告</b>'
+           + '<p><b>格式化</b> 是数据恢复或磁盘重建过程的一部分, 如果在这种情况下执行, 通常会导致正在格式化的磁盘上的所有数据丢失.',
+      type: "warning",
+      html: true
+    });
+}
+</script>
+<form name="arrayOps" method="POST" action="/update.htm" target="progressFrame">
+<input type="hidden" name="startState" value="<?=htmlspecialchars($var['mdState'])?>">
+<input type="hidden" name="file" value="">
+<table class="array_status">
+<?switch ($var['fsState']):
+  case "Started":?>
+    <tr><td><?status_indicator()?><span class="strong">已启动<?=(($var['startMode']=='Maintenance')?' - 维护模式':'')?></span></td>
+    <td><input type="button" value="停止" onclick="stopArray(this.form)"<?if ($parity||$mover||$btrfs):?> 已停用<?endif;?>></td>
+    <td id="stop">点击 <strong>停止(Stop)</strong> 将会使该阵列脱机.<?=$parity?:$mover?:$btrfs?:''?></td></tr>
+<?  if ($var['fsNumUnmountable']>0):?>
+      <tr><td><strong>不可卸载的磁盘<?=$var['fsNumUnmountable']==1?'':''?> 当前:</strong><br>
+<?    foreach ($disks as $disk) if (strpos($disk['fsStatus'],'Unmountable')!==false)
+      echo "<span class='blue-text'>".my_disk($disk['name'])."</span> &bullet; ".my_id($disk['id'])." (".$disk['device'].")<br>";?>
+      </td><td><input type="submit" id="btnFormat" name="cmdFormat" value="格式化" disabled><input type="hidden" name="unmountable_mask" value="<?=$var['fsUnmountableMask']?>"></td>
+      <td>点击 <strong>格式化</strong> 将在所有 <strong>不可卸载的</strong> 磁盘中创建文件系统.<br>
+      <a class="info none img nohand"><input type="checkbox" name="confirmFormat" value="关" onclick="formatWarning(this.checked),$('#btnFormat').prop('disabled',!arrayOps.confirmFormat.checked)">
+     <small>是的, 我想这样做</small></a>
+      </td></tr>
+<?  endif;
+    if (!$var['mdResyncPos']):
+      if (strstr($var['mdResyncAction'],"recon")):?>
+        <tr><td></td><td><input type="submit" name="cmdCheck" value="Sync"></td><td>点击 <strong>同步(Sync)</strong> 将启动 <strong>奇偶同步</strong> 和/或 <strong>数据重建</strong>.</td></tr>
+<?    elseif (strstr($var['mdResyncAction'],"clear")):?>
+        <tr><td></td><td><input type="submit" name="cmdCheck" value="Clear"></td><td>点击 <strong>清除(Clear)</strong> 将启动 <strong>清理</strong> 新的数据磁盘.</td></tr>
+<?    else:
+        if ($var['mdResyncAction']=="check"):?>
+          <tr><td></td><td><input type="submit" name="cmdCheck" value="检查"></td><td>点击 <strong>检查(Check)</strong> 将在所有阵列上启动 <strong>读取检查</strong>.</td></tr>
+<?      elseif (strstr($var['mdResyncAction'],"check")):?>
+          <tr><td>奇偶有效.</td><td><input type="submit" name="cmdCheck" value="检查"></td><td>点击 <strong>检查(Check)</strong> 将启动 <strong>奇偶校验</strong>.&nbsp;&nbsp;<a href="/Main/Scheduler"<?if ($tabbed):?> onclick="$.cookie('one','tab1',{path:'/'})"<?endif;?>>(计划)</a>
+          <br><input type="checkbox" name="optionCorrect" value="correct" checked><small>对奇偶磁盘写入修正</small></td></tr>
+<?      endif;?>
+        <tr><td></td><td><input type="button" value="历史" onclick="openBox('/webGui/include/ParityHistory.php','奇偶/读取检查 历史记录',600,900,false)"></td>
+<?      if ($var['sbSyncExit']!=0):?>
+          <td>上次检查未完成 <strong><?=my_time($var['sbSynced2']).day_count($var['sbSynced2'])?></strong><?if ($var['sbSynced2']):?>, 找到 <strong><?=$var['sbSyncErrs']?></strong> 个错误<?=$var['sbSyncErrs']==1?'':' '?>.<?endif;?>
+          <br><i class="fa fa-dot-circle-o icon"></i><small>错误代码: <?=my_error($var['sbSyncExit'])?></small></td></tr>
+<?      elseif ($var['sbSynced']==0):
+          list($date,$duration,$speed,$status,$error) = last_parity_log();?>
+<?        if ($status==0):?>
+            <td>上次检查时间 <strong><?=my_time($date).day_count($date)?></strong>, 找到 <strong><?=$error?></strong> 个错误<?=$error==1?'':' '?>.
+            <br><i class="fa fa-clock-o icon"></i><small>持续时间: <?=my_check($duration,$speed)?></small></td></tr>
+<?        else:?>
+            <td>上次检查未完成 <strong><?=my_time($date).day_count($date)?></strong>, 找到 <strong><?=$error?></strong> 个错误<?=$error==1?'':' '?>.
+            <br><i class="fa fa-dot-circle-o icon"></i><small>错误代码: <?=my_error($status)?></small></td></tr>
+<?        endif;
+        elseif ($var['sbSynced2']==0):
+          list($date,$duration,$speed,$status,$error) = explode('|', read_parity_log($var['sbSynced']));
+          if ($status==0):?>
+            <td>上次检查时间 <strong><?=my_time($var['sbSynced']).day_count($var['sbSynced'])?></strong>, 找到 <strong><?=$error?></strong> 个错误<?=$error==1?'':' '?>.
+            <br><i class="fa fa-clock-o icon"></i><small>持续时间: <?=my_check($duration,$speed)?></small></td></tr>
+<?        else:?>
+            <td>上次检查未完成 <strong><?=my_time($var['sbSynced']).day_count($var['sbSynced'])?></strong>, 找到 <strong><?=$error?></strong> 个错误<?=$error==1?'':' '?>.
+            <br><i class="fa fa-dot-circle-o icon"></i><small>错误代码: <?=my_error($status)?></small></td></tr>
+<?        endif;
+        else:
+          $duration = $var['sbSynced2']-$var['sbSynced'];
+          $speed = $duration?my_scale($var['mdResyncSize']*1024/$duration,$unit,1)." $unit/秒":'';?>
+          <td>上次检查完成时间 <strong><?=my_time($var['sbSynced2']).day_count($var['sbSynced2'])?></strong>, 找到 <strong><?=$var['sbSyncErrs']?></strong> 个错误<?=$var['sbSyncErrs']==1?'':' '?>.
+          <br><i class="fa fa-clock-o icon"></i><small>持续时间: <?=my_check($duration,$speed)?></small></td></tr>
+<?      endif;
+      endif;
+    else:
+      if ($var['mdResyncAction']=="check"):?>
+        <tr><td>读取检查进行中.</td><td>
+        <input type="button" id="pauseButton"<?if ($var['mdResync']):?> value="Pause" onclick="pauseParity(this.form)"<?else:?> value="Resume" onclick="resumeParity(this.form)"<?endif;?>>
+        <input type="button" id="cancelButton" value="Cancel" onclick="stopParity(this.form,'Read-Check')"></td>
+        <td id="cancelText">点击 <strong>取消(Cancel)</strong> 将停止读取检查.</td></tr>
+<?    elseif (strstr($var['mdResyncAction'],"check")):?>
+        <tr><td>奇偶校验进行中.</td><td>
+        <input type="button" id="pauseButton"<?if ($var['mdResync']):?> value="Pause" onclick="pauseParity(this.form)"<?else:?> value="Resume" onclick="resumeParity(this.form)"<?endif;?>>
+        <input type="button" id="cancelButton" value="Cancel" onclick="stopParity(this.form,'Parity-Check')"></td>
+        <td id="cancelText">点击 <strong>取消(Cancel)</strong> 将停止就检查.</td></tr>
+<?    elseif (strstr($var['mdResyncAction'],"recon")):?>
+        <tr><td>奇偶同步/数据重建 进行中.</td><td>
+        <input type="button" id="pauseButton"<?if ($var['mdResync']):?> value="Pause" onclick="pauseParity(this.form)"<?else:?> value="Resume" onclick="resumeParity(this.form)"<?endif;?>>
+        <input type="button" id="cancelButton" value="Cancel" onclick="stopParity(this.form,'Parity-Sync/Data-Rebuild')"></td>
+        <td id="cancelText">点击 <strong>取消(Cancel)</strong> 将停止奇偶同步/数据重建.
+        <br>警告: 取消该操作可能会导致阵列不受保护!</td></tr>
+<?    elseif (strstr($var['mdResyncAction'],"clear")):?>
+        <tr><td>清理进行中.</td><td>
+        <input type="button" id="pauseButton"<?if ($var['mdResync']):?> value="Pause" onclick="pauseParity(this.form)"<?else:?> value="Resume" onclick="resumeParity(this.form)"<?endif;?>>
+        <input type="button" id="cancelButton" value="Cancel" onclick="stopParity(this.form,'Clearing')"></td>
+        <td id="cancelText">点击 <strong>取消(Cancel)</strong> 将停止清理.</td></tr>
+<?    endif;?>
+      <tr><td></td><td><input type="button" value="历史" onclick="openBox('/webGui/include/ParityHistory.php','奇偶/读取检查 历史记录',600,900,false)"></td><td>当前操作 <?if ($var['mdResync']):?>已开始<?else:?>已暂停<?endif;?> 于 <strong><?=my_time($var['sbUpdated'])?></strong></td></tr>
+      <tr><td>总尺大小:</td><td id="line0"></td><td></td></tr>
+      <tr><td>持续时间:</td><td id="line1"></td><td></td></tr>
+      <tr><td>当前位置:</td><td id="line2"></td><td></td></tr>
+      <tr><td>估计速度:</td><td id="line3"></td><td></td></tr>
+      <tr><td>预计的完成时间:</td><td id="line4"></td><td></td></tr>
+<?    if (strstr($var['mdResyncAction'],"check ")):?>
+        <tr><td>同步错误 <?if ($var['mdResyncCorr']==0):?>检测到:<?else:?>已修正:<?endif;?></td><td id="line5"></td><td></td></tr>
+<?    endif;
+    endif;
+    break;
+  case "Starting":?>
+    <tr><td><?status_indicator()?><span class="strong big">正在启动...</span></td><td><input type="submit" name="cmdStart" value="Start" disabled></td><td></td></tr>
+<?  break;
+  case "Formatting":?>
+    <tr><td><?status_indicator()?><span class="strong big">已启动, 正在格式化...</span></td><td><input type="submit" name="cmdStop" value="停止" disabled></td><td></td></tr>
+<?  break;
+  case "Copying":?>
+    <tr><td><?status_indicator()?><span id="fsState" class="strong big">正在复制, <?=$var['fsCopyPrcnt']?>% 已完成...</span></td><td><input type="submit" name="cmdNoCopy" value="Cancel"></td><td></td></tr>
+<?  break;
+  case "Clearing":?>
+    <tr><td><?status_indicator()?><span id="fsState" class="strong big">正在清理, <?=$var['fsClearPrcnt']?>% 已完成...</span></td><td><input type="submit" name="cmdNoClear" value="Cancel"></td><td></td></tr>
+<?  break;
+  case "Stopping":?>
+    <tr><td><?status_indicator()?><span class="strong big">正在停止...</span></td><td><input type="submit" name="cmdStop" value="停止" disabled></td><td></td></tr>
+<?  break;
+  case "Stopped":
+    if ($var['configValid']=="error"):?>
+      <tr><td><?status_indicator()?><span class="strong big">已停止.</span></td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+      <td>无效, 丢失或过期 <a href="/Tools/Registration">注册 key</a>.</td></tr>
+<?  elseif ($var['configValid']=="invalid"):?>
+      <tr><td><?status_indicator()?><span class="strong big">已停止.</span></td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+      <td>连接的设备太多. 请考虑升级您的 <a href="/Tools/Registration">注册 key</a>.</td></tr>
+<?  elseif ($var['configValid']=="nokeyserver"):?>
+      <tr><td><?status_indicator()?><span class="strong big">已停止.</span></td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+      <td>无法连接密钥服务器. 请检查您的 <a href="/Settings/NetworkSettings">网络设置</a>.</td></tr>
+<?  elseif ($var['configValid']=="withdrawn"):?>
+      <tr><td><?status_indicator()?><span class="strong big">已停止.</span></td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+      <td>此 Unraid OS 版本已被撤回, 可能再使用. 请 <a href="/Plugins">更新</a> 你的服务器.</td></tr>
+<?  else:
+      switch ($var['mdState']):
+      case "STOPPED":
+        if (strstr($var['mdResyncAction'],"recon")):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 配置有效.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将会启动阵列并且进行 <strong>奇偶同步</strong> 和/或 <strong>数据重建</strong>.</td></tr>
+<?      elseif ($var['mdResyncAction']=="clear"):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 检测到新的数据磁盘.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将会启动阵列并且进行 <strong>清理</strong> 新的数据磁盘.</td></tr>
+<?      elseif ($var['sbClean']!="yes" && $var['mdResyncAction']=="check"):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 检测到不正常关机.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将会启动阵列.</td></tr>
+<?      elseif ($var['sbClean']!="yes" && strstr($var['mdResyncAction'],"check")):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 检测到不正常关机.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将会启动阵列并且进行 <strong>奇偶校验</strong>.
+          <br><input type="checkbox" name="optionCorrect" value="correct" checked><small>对奇偶写入修正</small></td></tr>
+<?      elseif (missing_cache()):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 缓存磁盘丢失.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)" disabled></td>
+          <td>点击 <strong>启动(Start)</strong> 将删除丢失的缓存磁盘, 然后启动阵列.
+          <br><input type="checkbox" name="confirmStart" value="关闭" onclick="$('#cmdStart').prop('disabled',!arrayOps.confirmStart.checked)"><small>是, 我想这样做</small></td></tr>
+<?      else:?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 配置有效.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将会启动阵列.</td></tr>
+<?      endif;
+        maintenance_mode();
+        check_encryption();
+        break;
+      case "NEW_ARRAY":
+        if (strpos($disks['parity']['status'],"DISK_NP")===0 && strpos($disks['parity2']['status'],"DISK_NP")===0):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 配置有效.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> 将记录所有磁盘信息并且启动阵列.
+          <br>该阵列将启动, 但由于尚未配置 <em>奇偶</em>, 因此 <strong>未受保护</strong>.</td></tr>
+<?      else:?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 配置有效.</td><td><input type="button" id="cmdStart" value="Start" onclick="parityWarning(this.form)"></td>
+          <td>点击 <strong>启动(Start)</strong> will record all disk information, bring the array on-line, and start Parity-Sync.
+          <br>该阵列将启动, 但是在奇偶同步完成之前该阵列将 <strong>不受保护</strong> .
+          <br><input type="checkbox" name="md_invalidslot" value="99">奇偶已就绪且有效.</td></tr>
+<?      endif;
+        maintenance_mode();
+        check_encryption();
+        break;
+      case "DISABLE_DISK":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 丢失硬盘.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)" disabled></td>
+        <td>点击 <strong>启动(Start)</strong> 将禁用丢失的磁盘, 然后启动阵列. 尽快安装替换磁盘.
+        <br><input type="checkbox" name="confirmStart" value="OFF" onclick="$('#cmdStart').prop('disabled',!arrayOps.confirmStart.checked)"><small>是, 我想这样做</small></td></tr>
+<?      maintenance_mode();
+        check_encryption();
+        break;
+      case "RECON_DISK":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 已安装替换磁盘.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+        <td><strong>启动(Start)</strong> 将会启动阵列并且进行 <strong>奇偶同步</strong> 和/或 <strong>数据重建</strong>.</td></tr>
+<?      maintenance_mode();
+        check_encryption();
+        break;
+      case "SWAP_DSBL":
+        if ($var['fsCopyPrcnt']=="100"):?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 升级磁盘/奇偶交换.</td><td><input type="button" id="cmdStart" value="Start" onclick="prepareInput(this.form)"></td>
+          <td><strong>启动(Start)</strong> 将扩展数据磁盘的文件系统 (如果可能); 然后启动阵列并开始数据重建.</td></tr>
+<?        maintenance_mode();
+          check_encryption();
+        else:?>
+          <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 升级磁盘/奇偶交换.</td><td><input type="submit" name="cmdCopy" value="Copy" disabled></td>
+          <td><strong>复制</strong> 将奇偶信息复制到新的奇偶磁盘.
+          <br>复制完成后, 将会启动阵列, 直到数据重建完成后禁用这块磁盘.
+          <br><input type="checkbox" name="confirmStart" value="OFF" onclick="arrayOps.cmdCopy.disabled=!arrayOps.confirmStart.checked"><small>是, 我想这样做</small></td></tr>
+<?      endif;
+        break;
+      case "ERROR:INVALID_EXPANSION":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 无效的扩展.</td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+        <td>不能添加新磁盘, 也不能删除现有磁盘.</td></tr>
+<?      break;
+      case "ERROR:NEW_DISK_TOO_SMALL":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 替换的磁盘太小.</td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+        <td>替换磁盘必须与原始磁盘一样大或更大.</td></tr>
+<?      break;
+      case "ERROR:PARITY_NOT_BIGGEST":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 奇偶槽(Parity) 中的磁盘不是最大容量的.</td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+        <td>如果这是一个新阵列, 请将最大容量的磁盘移到 <em>奇偶</em> 插槽中.
+        <br>如果要添加新磁盘或替换禁用的磁盘, 请尝试奇偶交换</td></tr>
+<?      break;
+      case "ERROR:TOO_MANY_MISSING_DISKS":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 无效的配置.</td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+        <td>错误或丢失的磁盘太多!</td></tr>
+<?      break;
+      case "ERROR:NO_DATA_DISKS":?>
+        <tr><td><?status_indicator()?><span class="strong big">已停止</span>. 没有数据磁盘.</td><td><input type="submit" name="cmdStart" value="Start" disabled></td>
+        <td>没有分配阵列数据磁盘!</td></tr>
+<?      break;
+      endswitch;
+    endif;
+  endswitch;?>
+  <tr><td></td><td class="line" colspan="2"></td></tr>
+</table>
+</form>
+<?if ($var['fsState']=="Started"):?>
+<?if ($keyfile):?>
+<form name="delete_keyfile" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="unused">
+<input type="hidden" name="#include" value="webGui/include/KeyUpload.php">
+<table class="array_status noshift">
+<tr><td></td><td><input type="submit" name="#apply" value="Delete" disabled></td><td>点击 <strong>删除(Delete)</strong> 将删除加密密钥文件.
+<br><input type="checkbox" onchange="toggleApply(this.checked)"><small>是的, 我想这样做</small></td></tr>
+<tr><td></td><td class="line" colspan="2"></td></tr>
+</table>
+</form>
+<?endif;?><!-- markdown fix -->
+<table class="array_status noshift">
+ <tr><td></td><td><input type="button" id="button-down" onclick="$('[id^=button-]').prop('disabled',true);toggle_state('down')" value="休眠"<?=$parity?' disabled':''?>><input type="button" id="button-up" onclick="$('[id^=button-]').prop('disabled',true);toggle_state('up')" value="唤醒"<?=$parity?' disabled':''?>></td>
+ <td>点击 <strong>休眠(Spin Down)</strong> 将立即休眠所有磁盘<br>点击 <strong>唤醒(Spin Up)</strong> 将立即唤醒所有磁盘.</td></tr>
+ <tr><td></td><td><input type="button" value="清理统计" onclick="toggle_state('Clear')"></td><td>点击 <strong>清理统计(Clear Statistics)</strong> 将立即清除所有磁盘统计信息.</td></tr>
+ <tr><td></td><td class="line" colspan="2"></td></tr>
+</table>
+<?if ($var['shareCacheEnabled']=="yes" && is_dir("/mnt/cache")):?>
+<form name="mover_schedule" method="POST" action="/update.htm" target="progressFrame">
+<table class="array_status noshift">
+ <tr><td></td>
+<?if ($mover):?>
+ <td><input type="submit" name="cmdStartMover" value="搬家" disabled></td><td>已禁用 - 搬家程序正在运行正在运行.</td>
+<?else:?>
+ <td><input type="submit" name="cmdStartMover" value="搬家"></td><td>点击 <strong>搬家(Move now)</strong> 将立即执行将缓存磁盘中的数据移动到阵列中.&nbsp;&nbsp;<a href="/Main/Scheduler"<?if ($tabbed):?> onclick="$.cookie('one','tab2',{path:'/'})"<?endif;?>>(计划)</a></td>
+<?endif;?>
+ </tr>
+</table>
+</form>
+<?endif;?>
+<?elseif ($wrong && $keyfile):?>
+<form name="delete_keyfile" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="unused">
+<input type="hidden" name="#include" value="webGui/include/KeyUpload.php">
+<table class="array_status noshift">
+ <tr><td></td><td><input type="submit" name="#apply" value="Delete"></td><td>点击 <strong>删除(Delete)</strong> 将删除加密密钥文件.</td></tr>
+ <tr><td></td><td class="line" colspan="2"></td></tr>
+</table>
+</form>
+<?endif;?><!-- markdown fix -->
+<form name="shutdownOps" method="POST" action="/webGui/include/Boot.php">
+<table class="array_status noshift">
+ <tr><td></td><td><input type="button" name="reboot" value="重启" onclick="shutdown_now(this.form,'reboot')"><input type="button" name="shutdown" value="关机" onclick="shutdown_now(this.form,'shutdown')"></td>
+ <td>点击 <strong>重启</strong> 将执行系统 <em>清理</em> 然后重启系统.<br>点击 <strong>关机</strong> 将执行系统 <em>清理</em> 然后关闭计算机.</td></tr>
+ <tr><td></td><td class="line" colspan="2"></td></tr>
+</table>
+</form>
+<!-- markdown fix --></p><?if (isset($display['sleep'])) @include $display['sleep'];?>
+<?if ($btrfs):?>
+<script>
+function enable_stop() {
+  $.get('/webGui/include/ReloadPage.php',{btrfs:'btrfs'},function(data) {
+    switch (data) {
+    case 'disable':
+      setTimeout(enable_stop,5000);
+    break;
+    case 'enable':
+      var stop = $('td#stop');
+      stop.html(stop.html().replace("<?=$btrfs?>",""));
+      $('input[value="Stop"]').prop('disabled',false);
+    break;}
+  });
+}
+enable_stop();
+</script>
+<?endif;?>
+
+> **彩色状态指示器** *阵列* 的颜色指示器的意义如下:
+>
+> <i class='fa fa-circle orb green-orb'></i>阵列已启动, 奇偶有效.
+>
+> <i class='fa fa-circle orb grey-orb'></i>阵列已停止, 奇偶有效.
+>
+> <i class='fa fa-warning orb yellow-orb'></i>阵列已启动, 但是奇偶无效.
+>
+> <i class='fa fa-warning orb grey-orb'></i>阵列已停止, 奇偶无效.
+>
+<?if ($var['fsState'] == "Stopped"):?>
+> #### 分配设备
+>
+> An Unraid disk array consists of a single parity disk and a number of data disks. The data
+> disks are exclusively used to store user data, and the parity disk provides the redundancy necessary
+> to recover from any singe disk failure.
+>
+> Note that we are careful to use the term *disk* when referring to an array storage device.  We
+> use the term *hard drive* (or sometimes just *drive*) when referring to an actual hard disk drive (HDD)
+> device. This is because in a RAID system it is possible to read/write an array disk whose corresponding
+> hard drive is disabled or even missing! In addition, it is useful to be able to ask, "which device is
+> assigned to be the parity disk?"; or, "which device corresponds to disk2?".
+>
+> We therefore need a way to assign hard drives to array disks. This is accomplished here on the
+> Main page when the array is stopped. There is a drop-down box for each array disk which lists all the
+> unassigned devices. To assign a device simply select it from the list. Each time a device
+> assignment is made, the system updates a configuration file to record the assignment.
+>
+> #### 要求
+>
+> Unlike traditional RAID systems which stripe data across all the array devices, an Unraid server
+> stores files on individual hard drives. Consequently, all file write operations will involve both the
+> data disk the file is being written to, and the parity disk. For these reasons,
+>
+> * the parity disk size must be as large or larger than any of the data disks,
+>
+> and
+>
+> * given a choice, the parity disk should be the fastest disk in your collection.
+>
+> #### 指南
+>
+> Here are the steps you should follow when designing your Unraid disk array:
+>
+> 1. Decide which hard drive you will use for parity, and which hard drives you will use for
+> data disk1, disk2, etc., and label them in some fashion. Also, find the serial number of each hard
+> drive and jot it down somewhere; you will need this information later.
+>
+> 2. Install your hard drive devices, boot Unraid OS and bring up the webGui. If this is a fresh system
+> build, then the Main page will show no disks installed. This doesn't mean the system can't detect your
+> hard drives; it just means that none have been assigned yet.
+>
+> 3. Remember the serial numbers you recored back in step 1? For parity and each data disk, select the
+> proper hard drive based on its serial number from the drop down list.
+>
+> #### 热插拔
+>
+> You may also *hot plug* hard drives into your server if your hardware supports it. For example,
+> if you are using hard drive cages, you may simply plug them into your server while powered on and
+> with array Stopped. Refresh the Main page to have new unassigned devices appear in the assignment
+> dropdown lists.
+>
+> #### 下一步
+>
+> Once you have assigned all of your hard drives, refer to the Array Status section below
+> and Start the array.
+
+<?if ($encrypt):?>
+<div></div>
+> #### 加密输入
+>
+> With array Stopped, the user can specify a new encryption key. Note that once a device
+> is formatted with a particular key it may only be opened using that same key. Changing the encryption key requires
+> encrypted devices to be reformatted **resulting in permanent loss of all existing data on those devices.**
+>
+> #### 口令
+>
+> Enter a passphrase of up to 512 characters. It is highly advisable to only use the 95 printable characters from the
+> first 128 characters of the [ASCII table](https://en.wikipedia.org/wiki/ASCII), as they will always have the same binary
+> representation. Other characters may have different encoding depending on system configuration and your passphrase will
+> not work with a different encoding. If you want a longer passphrase or to include binary data, upload a keyfile instead.
+>
+> Please refer to the [cryptsetup FAQ](https://gitlab.com/cryptsetup/cryptsetup/wikis/FrequentlyAskedQuestions#5-security-aspects)
+> for what constitutes a *secure* passphrase.
+>
+> **记住** 这个口令. **如果丢失, 将无法恢复加密内容!**
+>
+> #### 密钥文件
+>
+> Select a local keyfile with a stored encryption key or a binary file. The maximum size of the keyfile is 8M (8388608 byte).
+>
+> **备份** 你的本地密钥文件. **如果丢失, 将无法恢复加密内容!**
+<?endif;?>
+<?endif;?>

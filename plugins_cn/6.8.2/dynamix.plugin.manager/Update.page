@@ -1,0 +1,98 @@
+Menu="About"
+Title="更新 OS"
+Icon="icon-update"
+Tag="upload"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$empty = "<tr><td colspan='6'><div class='spinner'></div></td><tr>";
+$version = $branch = $date = 'unknown';
+$bzroot = file_exists('/boot/previous/bzroot');
+$check = $notify['unraidos'] ? 0 : 1;
+
+if (file_exists('/boot/previous/changes.txt')) {
+  exec("head -n4 /boot/previous/changes.txt",$rows);
+  foreach ($rows as $row) {
+    $i = stripos($row,'version');
+    if ($i !== false) {
+      list($version,$date) = explode(' ',trim(substr($row,$i+7)));
+      break;
+    }
+  }
+  $branch = strpos($version,'rc')===false ? '稳定版' : '下次再说';
+}
+?>
+<style>
+input[value='Install'],input[value='Update'],input[value='Restore']{margin:0}
+<?if (strstr('white,black',$display['theme'])):?>
+span.vhshift{margin-top:11px!important}
+<?endif;?>
+</style>
+<script>
+var original = null;
+
+function update_table(branch) {
+  $('#os_list').html("<?=$empty?>");
+  if (original) {
+    if (branch != original) branch = '';
+  } else {
+    if (branch) original = branch;
+  }
+  $.get('/plugins/dynamix.plugin.manager/include/ShowPlugins.php',{system:'true',branch:branch},function(data) {
+    if (data) $('#os_list').html(data);
+    $('#os_table').trigger('update',true);
+  });
+}
+function downgrade() {
+ $.get('/plugins/dynamix.plugin.manager/include/Downgrade.php',{version:'<?=$version?>'},function(){refresh();});
+}
+function loadlist(id) {
+  $.get('/plugins/dynamix.plugin.manager/include/ShowPlugins.php',{system:'true',audit:id,check:<?=$check?>},function(data) {
+    var list = $('#os_list');
+    if (id) {
+      var cmd = id.split(':');
+      var tr = 'tr#'+cmd[0].replace(/[\. _]/g,'');
+      switch (cmd[1]) {
+        case 'return' : list.html(data); break;
+        case 'update':
+        case 'install': list.find(tr).remove(); list.append(data); break;
+      }
+    } else {
+      list.html(data);
+    }
+<?if (preg_match("/^\*\*(REBOOT REQUIRED|DOWNGRADE)/",@file_get_contents("$docroot/plugins/unRAIDServer/README.md",false,null,0,20))):?>
+    $('#change_branch').prop('disabled',true);
+<?endif;?>
+<?if ($bzroot):?>
+    $('#previous').show();
+<?endif;?>
+<?if ($check):?>
+    $('#checkos').prop('disabled',false);
+<?endif;?>
+  });
+}
+$(function() {
+  loadlist();
+<?if ($check):?>
+  $('.tabs').append("<span class='status vhshift'><input type='button' id='checkos' value='检查更新' onclick='openBox(\"/plugins/dynamix.plugin.manager/scripts/plugin&arg1=checkos\",\"检查系统更新\",600,600,true,\"loadlist\",\":return\")' disabled></span>");
+<?endif;?>
+});
+</script>
+<table class='tablesorter plugins shift' id='os_table'>
+<thead><tr><th></th><th>组件</th><th>作者</th><th>版本</th><th>状态</th><th>分支</th></tr></thead>
+<tbody id="os_list"><?=$empty?></tbody>
+<?if ($bzroot):?>
+<tbody id="previous" style="display:none"><tr><td><img src="/plugins/unRAIDServer/images/unRAIDServer.png" class="list"></td><td><b>Unraid OS (以前的)</b></td><td>LimeTech</td><td><?=$version?></td><td><input type="button" value="恢复" onclick="downgrade()"></td><td><?=$branch?></td></tbody>
+<?endif;?>
+</table>

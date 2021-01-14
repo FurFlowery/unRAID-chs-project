@@ -1,0 +1,63 @@
+Menu="UNRAID-OS"
+Title="系统设备"
+Icon="icon-hardware"
+Tag="server"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<style>
+table.pre{margin-top:0;background:transparent}
+table.pre td:first-child{width:144px}
+table tr td{padding:0 0 3px 0;margin:0}
+table tr td.thin{line-height:8px;height:8px}
+</style>
+<script>
+$(function(){
+  $('#t1').load('/webGui/include/SysDevs.php',{table:'t1'});
+  $('#t2').load('/webGui/include/SysDevs.php',{table:'t2'});
+  $('#t3').load('/webGui/include/SysDevs.php',{table:'t3'});
+  $('#t4').load('/webGui/include/SysDevs.php',{table:'t4'});
+});
+</script>
+
+**PCI 设备和 IOMMU 组**
+
+> 这将显示系统上可用的 IOMMU 组列表以及每个 IOMMU 组的 'lspci' 命令输出. 数字标识符用于配置 PCI 直通。.
+
+<?if (strpos(file_get_contents('/proc/cmdline'), 'pcie_acs_override=') !== false):?>
+<p class="notice" style="line-height:30px;height:auto">警告：您的系统已启用 PCIe ACS 覆盖设置. 的情况下启动。以下列表并不反映自然组 IOMMU 设备分组的方式.<br>
+要查看硬件的自然 IOMMU 组, 请转到 <b><a href="/Settings/VMSettings">虚拟机管理器</a></b> 页面并设置 <b>PCIe ACS 覆盖</b> 设置为 <b>禁用</b>.</p>
+<?endif;?>
+
+<pre><table id='t1' class='pre'><tr><td><div class="spinner"></div></td></tr></table></pre><br>
+
+**CPU 线程配对**
+
+> 这将显示 CPU 线程配对的列表.
+
+<pre><table id='t2' class='pre'><tr><td><div class="spinner"></div></td></tr></table></pre><br>
+
+**USB 设备**
+
+> 显示 'lsusb' 命令的输出. 数字标识符用于配置 PCI 直通.
+
+<pre><table id='t3' class='pre'><tr><td><div class="spinner"></div></td></tr></table></pre><br>
+
+**SCSI 设备**
+
+> 显示 'lsscsi' 命令的输出. 数字标识符用于配置 PCI 直通.
+>
+> 请注意, Linux 将 ATA, SATA 和 SAS 设备与真正的 SCSI 设备进行分组.
+
+<pre><table id='t4' class='pre'><tr><td><div class="spinner"></div></td></tr></table></pre>
+<input type="button" value="完成" onclick="done()">

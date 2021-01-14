@@ -1,0 +1,4 @@
+Menu="UserPreferences"
+Type="xmenu"
+Title="计划任务"
+Icon="icon-scheduler"

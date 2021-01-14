@@ -1,0 +1,34 @@
+Menu="CPUset:3"
+Title="CPU 隔离"
+Tag="icon-cpu"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+*/
+?>
+<form name="is">
+<input type="hidden" name="names" value="isolcpus">
+<table class='tablesorter shift' style='width:auto'>
+<thead><tr><th><i class="fa fa-list"></i> 隔离</th><?create()?></tr></thead>
+<tbody id="table-is"><?=$spinner?></tbody>
+</table>
+<input type="button" value="Apply" onclick="apply(this.form)" disabled><input type="button" value="完成" onclick="done()"><span id="wait-is" class="red-text" style="display:none"><i class="fa fa-spinner fa-spin"></i> 请稍候...</span>
+</form>
+<?if (!$safemode):?>
+<div class="notice isol" style="display:none">必须重新启动系统才能使更改生效!</div>
+<?else:?>
+<div class="notice">系统在安全模式下运行时, 禁止 CPU 隔离!</div>
+<?endif;?>
+
+> CPU 隔离允许用户指定要显式保留以便分配的 CPU 核心 (到虚拟机或者 Docker 容器).
+>
+> 这对于游戏虚拟机的顺畅运行是非常重要的, 因为即使您手动锁定 Docker容器以避免与游戏虚拟机重叠,
+> 主机操作系统仍然可以利用与来宾虚拟机相同的内核来执行诸如返回 webGui 响应, 运行奇偶校验, btrfs 操作等.

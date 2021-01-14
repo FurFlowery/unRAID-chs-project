@@ -1,0 +1,225 @@
+Menu="AutoUpdateApps:2"
+Title="Docker 自动更新设置"
+---
+<?PHP
+###############################################################
+#                                                             #
+# Community Applications copyright 2015-2021, Andrew Zawadzki #
+#                                                             #
+###############################################################
+
+$docroot = $docroot ?: $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+
+
+function searchArray($array,$key,$value) {
+  if ( function_exists("array_column") && function_exists("array_search") ) {   # faster to use built in if it works
+    $result = array_search($value, array_column($array, $key));   
+  } else {
+    $result = false;
+    for ($i = 0; $i <= max(array_keys($array)); $i++) {
+      if ( $array[$i][$key] == $value ) {
+        $result = $i;
+        break;
+      }
+    }
+  }
+  return $result;
+}
+
+require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
+
+$dockerRunning = is_dir("/var/lib/docker/tmp") ? "true" : "false";
+
+$dockerUpdateSettings = json_decode(@file_get_contents("/boot/config/plugins/ca.update.applications/DockerUpdateSettings.json"),true);
+if ( ! $dockerUpdateSettings['global']['dockerNotify'] )    { $dockerUpdateSettings['global']['dockerNotify'] = "yes"; }
+if ( ! $dockerUpdateSettings['global']['dockerUpdateAll'] ) { $dockerUpdateSettings['global']['dockerUpdateAll'] = "no"; }
+
+if ( $dockerRunning == "true" ) {
+  $DockerTemplates = new DockerTemplates();
+  $info = $DockerTemplates->getAllInfo();
+  $DockerClient = new DockerClient();
+  $moreInfo = $DockerClient->getDockerContainers();
+
+  $dockerSettings = "<table><tr>";
+  $containerNames = array_keys($info);
+
+  foreach ($containerNames as $container) {
+		if ( ! $info[$container]['registry'] ) { continue; }
+    $class = $dockerUpdateSettings['containers'][$container]['update'] ? "unRaidDockerButton" : null;
+    $index = searchArray($moreInfo,"Name",$container);
+    $repository = ($index === false) ? "Unknown" : $moreInfo[$index]['Image'];
+		$icon = $info[$container]['icon'] ?: "/plugins/dynamix.docker.manager/images/question.png";
+    $dockerSettings .= "<td width:25%;>";
+    $dockerSettings .= "<img src='$icon' width=48px; height=48px;></td>";
+    $dockerSettings .= "<td><strong>$container</strong><br>$repository</td>";
+    $dockerSettings .= "<td><div class='ca-switch-button-background autoUpdateDocker' style='width:25px; height:11px;'onclick='toggleDockerAutoStart(this);'>";
+    $dockerSettings .= "<div class='$class ca-switch-button-button' style='width:12px; height:11px;' data-docker='$container'>";
+    $dockerSettings .= "</div></div>";
+    $span = $class ? "<span><font color='red'>".tr("自动更新启用",true)."</font></span>" : "<span>".tr("自动更新禁用",true)."</span>";
+    $dockerSettings .= "$span</td><td>";
+    if ( $column == 2 ) {
+      $dockerSettings .= "</td></tr><tr>";
+      $column = 0;
+    } else {
+      ++$column;
+      $dockerSettings .= "</td><td>&nbsp;</td><td style='border-right:solid thin;'>&nbsp;</td> <td>&nbsp;</td><td>&nbsp;</td> <td>&nbsp;</td> <td>&nbsp;</td>   ";
+    }
+  }
+  $dockerSettings .= "</table>";
+} else {
+  $dockerSettings = "<table><tr><td><center><font size='5' color='purple'>".tr("Docker Must Be Enabled For This Module To Operate",true)."</font></center></td></tr></table>";
+  $dockerUpdateSettings['global']['dockerUpdateAll'] = "no";
+  $dockerUpdateSettings['cron']['dockerCronFrequency'] = "disabled";
+}
+if ( is_array($dockerUpdateSettings['cron']) ) {
+  $dockerCronSettings = array_keys($dockerUpdateSettings['cron']);
+  foreach ($dockerCronSettings as $setting) {
+    $dockerCronScript .= "$('#$setting').val('".$dockerUpdateSettings['cron'][$setting]."');";
+  }
+}
+?>
+
+<style>
+.unRaidDockerButton {
+  left: 11px;
+}
+</style>
+<script>
+var caURL = "/plugins/<?=$plugin?>/include/exec.php";
+
+$(function() {
+  if ( '<?=$dockerRunning?>' == "false" ) {
+    $('.dockerSettings').prop("disabled",true);
+    $('.dockerCron').prop("disabled",true);
+  } else {
+    <?=$dockerCronScript?>
+    validateCron("docker");
+  }
+    
+  $(".dockerCron").change(function() {
+    validateCron("docker");
+    $("#dockerApply").prop("disabled",false);
+  });
+
+  $("#dockerNotify").val("<?=$dockerUpdateSettings['global']['dockerNotify']?>");
+  $("#dockerUpdateAll").val("<?=$dockerUpdateSettings['global']['dockerUpdateAll']?>");
+  $("#dockerStopDelay").val("<?=$dockerUpdateSettings['global']['dockerStopDelay']?>");
+  
+  if ( "<?=$dockerUpdateSettings['global']['dockerUpdateAll']?>" == "yes" ) {
+    $("#dockerApps").hide();
+  }
+});
+
+function toggleDockerAutoStart(el) {
+  $(el).find("div").toggleClass("unRaidDockerButton");
+  if ( $(el).find("div").hasClass("unRaidDockerButton") ) {
+    $(el).parent().find("span").html("<font color='red'><?tr("自动更新启用");?></font>");
+  } else {
+    $(el).parent().find("span").html("<?tr("自动更新禁用");?>");
+  }
+  $("#dockerApply").prop("disabled",false);
+}
+
+function dockerApply() {
+  var autoUpdate = new Array();
+  $(".unRaidDockerButton").each(function() {
+    var container = $(this).data("docker");
+    autoUpdate.push(container);
+  });
+  var dockerSettings = new Array();
+  $(".dockerSettings").each(function() {
+    var setting = $(this).val();
+    var id = $(this).attr("id");
+    var newSetting = new Array(id,setting);
+    dockerSettings.push(newSetting);
+  });
+  var dockerCron = getCronSettings("docker");
+  var dockerNotify = $("#dockerNotify").val();
+  var dockerUpdateAll = $("#dockerUpdateAll").val();
+  $.post(caURL,{action:'dockerApply',dockerSettings:dockerSettings,autoUpdate:autoUpdate,dockerCron:dockerCron},function(data) {
+    if (data) {
+      $("#testing").html(data);
+    }
+  });
+  $("#dockerApply").prop("disabled",true);
+}
+
+function toggleAll() {
+  if ( $("#dockerUpdateAll").val() == "yes" ) {
+    $("#dockerApps").hide();
+  } else {
+    $("#dockerApps").show();
+  }
+  $("#dockerApply").prop("disabled",false);
+}
+
+
+</script>
+> <center><a href="http://lime-technology.com/forum/index.php?topic=53693.0" target="_blank"><?tr("Support");?></a></center>
+> <br>
+> <center><a href='https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=7M7CBCVU732XG' target='_blank'><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"></a></center>
+
+<div id='testing'></div>
+<div>
+<div style='width:45%;float:left;'>
+<table>
+<tr>
+  <td><b><?tr("更新时是否发送通知?");?></b></td>
+  <td><select class='dockerSettings' id='dockerNotify' onchange=$('#dockerApply').prop('disabled',false);>
+    <option value='yes'><?tr("是");?></option>
+    <option value='no'><?tr("否");?></option>
+    </select></td>
+</tr>
+<tr>
+  <td><b><?tr("等待多久安全的停止容器:");?></b></td>
+  <td><input type='number' placeholder='10' class='narrow dockerSettings' id='dockerStopDelay' onchange=$('#dockerApply').prop('disabled',false);></td>
+</tr>
+<tr>
+  <td><b><?tr("是否更新所有Docker应用");?></b></td>
+  <td><select class='dockerSettings' id='dockerUpdateAll' onchange='toggleAll();'>
+    <option value='yes'><?tr("是");?></option>
+    <option value='no'><?tr("否");?></option>
+    </select></td>
+</tr>
+<tr><td><strong><?tr("更新频率:")?></strong><br><?tr("不要与自动更新同时启用");?></td>
+<td><select id='dockerCronFrequency' class='dockerCron'>
+  <option value='disabled'><?tr("禁用");?></option>
+  <option value='Daily'><?tr("每日");?></option>
+  <option value='Weekly'><?tr("每周");?></option>
+  <option value='Monthly'><?tr("每月");?></option>
+  <option value='Custom'><?tr("自定义");?></option>
+</select></td></tr>
+</tr></table>
+</div>
+<div style='width:45%;float:left;'>
+<table>
+<tr><td><strong><?tr("每周的哪一天:")?></strong></td>
+<td><select id='dockerCronDay' class='dockerCron'>
+<?=$pluginDayScript?>
+</select></td></tr>
+<tr><td><strong><?tr("每月的哪一天:");?></strong></td>
+<td><select id='dockerCronDayOfMonth' class='dockerCron'>
+<?=$pluginDayOfMonth?>
+</select></td></tr>
+<tr><td><strong><?tr("时:")?></strong></td>
+<td><select id='dockerCronHour' class='dockerCron'>
+<?=$pluginCronHour?>
+</select></td></tr>
+<tr><td><strong><?tr("分:");?></strong></td>
+<td><select id='dockerCronMinute' class='dockerCron'>
+<?=$pluginMinute?>
+</select></td></tr>
+<tr><td><strong><?tr("自定义 (cron 表达式):");?></strong></td>
+<td><input type='text' id='dockerCronCustom' class='dockerCron'></td></tr>
+</table>
+</div></div>
+<br><br>
+<div id='dockerApps'>
+<?=$dockerSettings?>
+</div>
+<table></table>
+<input type='button' id='dockerApply' value='<?tr("应用");?>' onclick='dockerApply();' disabled><input type='button' value='<?tr("完成");?>' onclick='done();'>
+
+<a style='float:right;cursor:pointer' onclick='showCredits();'><?tr("关于");?></a><br><br></span>
+<center><a href="http://lime-technology.com/forum/index.php?topic=53693.0" target="_blank"><?tr("支持");?></a></center>
+<center><?tr("版本");?> <strong><span class='caUpdateVersion'></span></strong></center>

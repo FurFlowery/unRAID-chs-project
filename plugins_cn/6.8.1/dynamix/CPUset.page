@@ -1,0 +1,4 @@
+Menu="OtherSettings"
+Title="CPU 绑定"
+Type="xmenu"
+Icon="icon-cpu-pinning"

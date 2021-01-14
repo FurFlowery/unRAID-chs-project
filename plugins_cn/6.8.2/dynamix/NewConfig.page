@@ -1,0 +1,85 @@
+Menu="UNRAID-OS"
+Title="新配置"
+Icon="icon-config"
+Tag="cog"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$newarray = $var['mdState']=='NEW_ARRAY';
+$disabled = $var['fsState']=="Started";
+$width    = [166,300];
+if ($newarray) {
+  @unlink('/boot/config/smart-one.cfg');
+  @unlink('/boot/config/smart-all.cfg');
+  @unlink('/boot/config/plugins/dynamix/monitor.ini');
+  @unlink('/var/tmp/cache_log.tmp');
+}
+?>
+<style>
+span.indent{display:inline-block;width:240px;margin-top:11px;}
+</style>
+
+<script>
+function prepareNewConfig(form) {
+  for (var i=1,item; item=form.preset.options[i]; i++) {
+    switch (item.value) {
+      case 'parity': if (item.selected) form.preserveParity.disabled = false; break;
+      case 'data'  : if (item.selected) form.preserveData.disabled = false; break;
+      case 'cache' : if (item.selected) form.preserveCache.disabled = false; break;
+    }
+  }
+  form.preset.disabled = true;
+}
+$(function() {
+  $('#s1').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>, firstItemChecksAll:true, explicitClose:'...关闭'});
+<?if ($disabled):?>
+  $('#s1').dropdownchecklist('disable');
+<?endif;?>
+});
+</script>
+
+这是一个实用程序, 用于重置阵列磁盘配置, 以便所有磁盘都显示为 '新磁盘', 
+就像它是一个全新的服务器一样.
+
+当您添加或删除了多个驱动器并希望基于新配置重建奇偶校验时,
+这将非常有用.
+
+Use the *'Preserve current assignments'* selection to populate the desired disk slots ***after*** the array has been reset. By default **no** disk slots are populated.
+
+**不要以为使用此实用程序会重建出故障的驱动器**
+它会产生相反的效果, 使其无法重建现有的故障驱动器 - 您已收到警告!
+
+<hr>
+<form name="newConfig" method="POST" action="/update.htm" target="progressFrame" onsubmit="prepareNewConfig(this)">
+<input type="hidden" name="preserveParity" value="yes" disabled>
+<input type="hidden" name="preserveData" value="yes" disabled>
+<input type="hidden" name="preserveCache" value="yes" disabled>
+
+<span class="indent">保留当前作业:</span>
+<select id="s1" name="preset" size="1" multiple="multiple" style="display:none">
+<option value=''>全部</option>
+<?=mk_option_check(0,'parity','奇偶插槽')?>
+<?=mk_option_check(0,'data','数据插槽')?>
+<?=mk_option_check(0,'cache','缓存插槽')?>
+</select>
+<br>
+<span class="indent"><input type="submit" class="lock" name="cmdInit" value="Apply" disabled><input type="button" class="lock" value="完成" onclick="done()"></span>
+<?if ($newarray):?>
+阵列已经 <span class='strong big'>重置</span> (请配置)
+<?elseif ($disabled):?>
+阵列必须为 <span class='strong big'>已停止</span> 才能更改
+<?else:?>
+<input type="checkbox" onClick="cmdInit.disabled=!this.checked"><small>是的, 我想这样做</small>
+<?endif;?>
+</form>

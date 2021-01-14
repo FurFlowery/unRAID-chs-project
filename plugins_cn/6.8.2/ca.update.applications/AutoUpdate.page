@@ -1,0 +1,391 @@
+Menu="AutoUpdateApps:1"
+Title="插件自动更新设置"
+---
+<?
+###############################################################
+#                                                             #
+# Community Applications copyright 2015-2021, Andrew Zawadzki #
+#                                                             #
+###############################################################
+
+$docroot = $docroot ?: $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+
+
+function tr($string,$ret=false,$options=-1) {
+	if ( function_exists("_") )
+		$string =  _($string,$options);
+	if ( $ret )
+		return $string;
+	else
+		echo $string;
+}
+if ( ! function_exists("my_lang") ) {
+	function my_lang($string,$flag="") {
+		return $string;
+	}
+}
+
+$languageMessage = is_file("$docroot/plugins/dynamix/include/Translations.php") ? "<br>".tr("(Selecting Yes also updates languages)",true) : "";
+
+require_once("/usr/local/emhttp/plugins/dynamix.plugin.manager/include/PluginHelpers.php");
+require_once("/usr/local/emhttp/plugins/ca.update.applications/include/caCredits.php");
+
+$plugin = "ca.update.applications";
+
+$unRaidVersion = parse_ini_file("/etc/unraid-version");
+$backTopTopIncluded = (version_compare($unRaidVersion['version'],"6.4.0-rc9f","<=")) ? "false" : "true";
+
+$pluginsFolder = scandir("/var/log/plugins");
+
+# get the settings already selected
+
+$updateSettings = json_decode(@file_get_contents("/boot/config/plugins/$plugin/AutoUpdateSettings.json"),true);
+if ( ! $updateSettings ) {
+	$updateSettings['community.applications.plg'] = "true";
+	$updateSettings['fix.common.problems.plg'] = "true";
+	$updateSettings['ca.update.applications.plg'] = "true";
+	$updateSettings['pluginCronFrequency'] = "Daily";
+}
+if ( ! $updateSettings['notify'] ) { $updateSettings['notify'] = "yes"; }
+if ( ! isset($updateSettings['delay']) ) { $updateSettings['delay'] = "3"; }
+if ( ! $updateSettings['pluginCronFrequency'] ) { $updateSettings['pluginCronFrequency'] = "Daily"; }
+if ( $updateSettings['Global'] == "true" ) {
+	$globalUpdate = "selected";
+} 
+
+$displayOptions = "<table class='tablesorter'><thead><th>&nbsp;</th><th></th><th></th><th></th></thead><tbody>";
+foreach ($pluginsFolder as $pluginFile) {
+	if ( ( ! is_file("/boot/config/plugins/$pluginFile") ) && ( $pluginFile != "dynamix.plg" ) ) {
+		continue;
+	}
+
+	if ( pathinfo($pluginFile, PATHINFO_EXTENSION) == "plg" ) {
+		if ( $updateSettings[$pluginFile] ) {
+			$selected = "selected";
+		} else {
+			$selected = "";
+		}
+		$displayOptions .= "<tr>";
+		$faIcon = plugin("icon","/var/log/plugins/$pluginFile");
+		if ( $faIcon ) {
+			$faClass = substr($faIcon,0,5) == "icon-" ? $faIcon : "fa fa-$faIcon";
+			$displayOptions .= "<td><i class='$faClass' style='font-size:4rem;'></i></td>";
+		} else {
+		  $displayOptions .= "<td><img src='/".@icon(plugin("name","/var/log/plugins/$pluginFile"))."' width='48px'></td>";
+		}
+		$displayOptions .= "<td>".Markdown(@file_get_contents("/usr/local/emhttp/plugins/".@plugin("name","/var/log/plugins/$pluginFile")."/README.md"))."</td><td>";
+		$displayOptions .= "<div class='ca-switch-button-background autoUpdatePlugin' style='width:25px; height:11px;'onclick='toggleAutoStart(this);'>";
+		$class = $updateSettings[$pluginFile] ? "unRaidAutoButton" : null;
+		$displayOptions .= "<div class='$class ca-switch-button-button' style='width:12px; height:11px;' data-plugin='$pluginFile'>";
+		$displayOptions .= "</div></div>";
+		$displayOptions .= $class ? "<span><center><font color='red'>".tr("自动更新启用",true)."</font></center></span>" : "<span><center>".tr("自动更新禁用",true)."</center></span>";
+		$displayOptions .= "</td></tr>";
+	}
+}
+$displayOptions .= "</tbody></table>";
+$daysArray = array("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday");
+$days = array_keys($daysArray);
+$dayCounter = 0;
+foreach ($daysArray as $day) {
+	$pluginDayScript .= "<option value='$dayCounter'>".tr($day,true,0)."</option>";
+	++$dayCounter;
+}
+$dayOfMonthCounter = 1;
+for ($i = 1; $i < 32; $i++) {
+	$pluginDayOfMonth .= "<option value='$i'>$i</option>";
+}
+for ($i = 0; $i <24; $i++) {
+	$human = $i;
+	if ( $i > 12 ) {
+		$human = $i - 12;
+	}
+	if ( $i == 0 ) {
+		$human = 12;
+	}
+	if ( $i > 11 ) {
+		$human .= " PM";
+	} else {
+		$human .= " AM";
+	}
+	$pluginCronHour .= "<option value='$i'>$human</option>";
+}
+for ($i = 0; $i<60; $i++) {
+	$pluginMinute .= "<option value='$i'>$i</option>";
+}
+if ( is_array($updateSettings['cron']) ) {
+	$cronSettings = array_keys($updateSettings['cron']);
+	foreach ($cronSettings as $setting) {
+		$pluginCronScript .= "$('#$setting').val('".$updateSettings['cron'][$setting]."');";
+	}
+}
+?>
+<link type="text/css" rel="stylesheet" href="<?=autov("/plugins/ca.update.applications/styles/switchbutton.css")?>">
+<style>
+<?if ($backTopTopIncluded == "false"):?>
+.back-to-top {
+	background: none;
+	margin: 0;
+	position: fixed;
+	bottom: 50px;
+	right: 0;
+	width: 70px;
+	height: 70px;
+	z-index: 100;
+	display: none;
+	text-decoration: none;
+	color: #ffffff;
+}
+<?endif;?>
+.unRaidAutoButton {
+	left: 11px;
+}
+</style>
+
+<script>
+$(function() {
+  if ( typeof caPluginUpdateCheck === "function" ) {
+    caPluginUpdateCheck("ca.update.applications.plg",{name:"Auto Update Applications"},function(data) {
+			if (data) {
+				var result = JSON.parse(data);
+				$(".caUpdateVersion").html(result.installedVersion)
+			}
+		});
+  }
+});
+
+<?if ($backTopTopIncluded == "false"):?>
+jQuery(document).ready(function() {
+	var offset = 250;
+	var duration = 500;
+	jQuery(window).scroll(function() {
+		if (jQuery(this).scrollTop() > offset) {
+			jQuery('.back-to-top').fadeIn(duration);
+		} else {
+			jQuery('.back-to-top').fadeOut(duration);
+		}
+	});
+	
+	jQuery('.back-to-top').click(function(event) {
+		event.preventDefault();
+		jQuery('html, body').animate({scrollTop: 0}, duration);
+		return false;
+	})
+});
+<?endif;?>
+
+function toggleAutoStart(el) {
+	$(el).find("div").toggleClass("unRaidAutoButton");
+	if ( $(el).find("div").hasClass("unRaidAutoButton") ) {
+		$(el).parent().find("span").html("<center><font color='red'><?tr("自动更新启用");?></font><center>");
+	} else {
+		$(el).parent().find("span").html("<center><?tr("自动更新禁用");?></center>");
+	}
+	changeApply();
+}
+
+
+var caURL = "/plugins/<?=$plugin?>/include/exec.php";
+
+$(function() {
+	$(".pluginCron").change(function() {
+		validateCron("plugin");
+		changeApply();
+	});
+	
+	
+	if ( "<?=$upgradeAvailable?>" == "true" ) {
+		$("#upgradeAvailable").show();
+	}
+	changeGlobal();
+	$("#notify").val('<?=$updateSettings['notify']?>');
+	$("#delay").val('<?=$updateSettings['delay']?>');
+	$("#pluginCronFrequency").val('<?=$updateSettings['pluginCronFrequency']?>');
+	<?=$pluginCronScript?>
+	validateCron("plugin");
+});
+
+function validateCron(pagetype) {
+	var baseID = "#"+pagetype;
+	var frequency = $(baseID+"CronFrequency").val();
+	switch ( frequency ) {
+		case "disabled":
+			$(baseID+"CronDay").prop("disabled",true);
+			$(baseID+"CronDayOfMonth").prop("disabled",true);
+			$(baseID+"CronHour").prop("disabled",true);
+			$(baseID+"CronMinute").prop("disabled",true);
+			$(baseID+"CronCustom").prop("disabled",true);
+			break;
+		case "Daily":
+			$(baseID+"CronDay").prop("disabled",true);
+			$(baseID+"CronDayOfMonth").prop("disabled",true);
+			$(baseID+"CronHour").prop("disabled",false);
+			$(baseID+"CronMinute").prop("disabled",false);
+			$(baseID+"CronCustom").prop("disabled",true);
+			break;
+		case "Weekly":
+			$(baseID+"CronDay").prop("disabled",false);
+			$(baseID+"CronDayOfMonth").prop("disabled",true);
+			$(baseID+"CronHour").prop("disabled",false);
+			$(baseID+"CronMinute").prop("disabled",false);
+			$(baseID+"CronCustom").prop("disabled",true);
+			break;
+		case "Monthly":
+			$(baseID+"CronDay").prop("disabled",true);
+			$(baseID+"CronDayOfMonth").prop("disabled",false);
+			$(baseID+"CronHour").prop("disabled",false);
+			$(baseID+"CronMinute").prop("disabled",false);
+			$(baseID+"CronCustom").prop("disabled",true);
+			break;
+		case "Custom":
+			$(baseID+"CronDay").prop("disabled",true);
+			$(baseID+"CronDayOfMonth").prop("disabled",true);
+			$(baseID+"CronHour").prop("disabled",true);
+			$(baseID+"CronMinute").prop("disabled",true);
+			$(baseID+"CronCustom").prop("disabled",false);
+			break;
+	}
+}
+
+function showCredits() {
+	myAlert("CA Auto Update Plugins","<?=$caCredits?>","/plugins/<?=$plugin?>/images/ca.update.applications.png","96x96", true, false, true);
+}
+
+function myAlert(description,textdescription,textimage,imagesize, outsideClick, showCancel, showConfirm, alertType) {
+	if ( !outsideClick ) outsideClick = false;
+	if ( !showCancel )   showCancel = false;
+	if ( !showConfirm )  showConfirm = false;
+	if ( imagesize == "" ) { imagesize = "80x80"; }
+	swal({
+		title: description,
+		text: textdescription,
+		imageUrl: textimage,
+		imageSize: imagesize,
+		allowOutsideClick: outsideClick,
+		showConfirmButton: showConfirm,
+		showCancelButton: showCancel,
+		type: alertType,
+		html: true
+	});
+}
+
+function apply() {
+	var myvalue = new Array();
+	$('.unRaidAutoButton').each(function () {
+		var plugin = $(this).data("plugin");
+		var pluginSetting = new Array(plugin);
+		myvalue.push(pluginSetting);
+	});
+	var globalUpdate = $("#allPlugins").val();
+	var notify = $("#notify").val();
+	var delay = $("#delay").val();
+	var pluginCron = getCronSettings("plugin");
+	$.post(caURL,{action:'autoUpdatePlugins',globalUpdate:globalUpdate,pluginList:myvalue,notify:notify,delay:delay,pluginCron:pluginCron},function(data) {
+		if (data) {
+			$("#testing").html(data);
+		}
+	});
+	$(".applyButton").prop("disabled",true);
+}
+
+function getCronSettings(pagetype) {
+	var cronSettings = new Array();
+	$("."+pagetype+"Cron").each(function() {
+		var settingID = $(this).attr("id");
+		var settingVal = $(this).val();
+		var settings = new Array(settingID,settingVal);
+		cronSettings.push(settings);
+	});
+	return cronSettings;
+}
+
+function changeGlobal() {
+	var selectedValue = $('#allPlugins').val();
+	
+	if (selectedValue == "no" ) {
+		$("#pluginList").show();
+	} else {
+		$("#pluginList").hide();
+	}
+	changeApply();
+}
+
+function changeApply() {
+	$(".applyButton").prop("disabled",false);
+}
+</script>
+<FORM method="get" id="myForm">
+
+> <center><a href="http://lime-technology.com/forum/index.php?topic=53693.0" target="_blank"><?tr("支持");?></a></center>
+> <br>
+> <center><a href='https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=7M7CBCVU732XG' target='_blank'><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif"></a></center>
+
+
+<div>
+<div style='width:45%;float:left;'>
+<table>
+<tr><td><strong><?tr("更新时是否发送通知?");?></strong></td>
+<td><select id='notify' size='1' onchange='changeApply();'>
+	<option value='yes'><?tr("是");?></option>
+	<option value='no'><?tr("否");?></option>
+</select></td>
+<tr><td><strong><?tr("延后几天更新插件:");?></strong></td>
+<td><input type='number' id='delay' class='narrow' oninput='changeApply();'></td>
+<tr><td><strong><?tr("是否自动更新所有插件?");?></strong><?=$languageMessage?></td>
+<td><select id='allPlugins' size='1' onchange='changeGlobal();'>
+	<option value='no'><?tr("否");?></option>
+	<option value='yes' <?=$globalUpdate?>><?tr("是");?></option>
+</select></td>
+<tr><td><strong><?tr("更新检查频率:");?></strong></td>
+<td><select id='pluginCronFrequency' class='pluginCron'>
+	<option value='disabled'><?tr("禁用");?></option>
+	<option value='Daily'><?tr("每日");?></option>
+	<option value='Weekly'><?tr("每周");?></option>
+	<option value='Monthly'><?tr("每月");?></option>
+	<option value='Custom'><?tr("自定义");?></option>
+</select></td></tr>
+</tr></table>
+</div>
+<div style='width:45%;float:left;'>
+<table>
+
+<tr><td><strong><?tr("每周的哪一天:");?></strong></td>
+<td><select id='pluginCronDay' class='pluginCron'>
+<?=$pluginDayScript?>
+</select></td></tr>
+<tr><td><strong><?tr("每月的哪一天:");?></strong></td>
+<td><select id='pluginCronDayOfMonth' class='pluginCron'>
+<?=$pluginDayOfMonth?>
+</select></td></tr>
+<tr><td><strong><?tr("时:");?></strong></td>
+<td><select id='pluginCronHour' class='pluginCron'>
+<?=$pluginCronHour?>
+</select></td></tr>
+<tr><td><strong><?tr("分:");?></strong></td>
+<td><select id='pluginCronMinute' class='pluginCron'>
+<?=$pluginMinute?>
+</select></td></tr>
+<tr><td><strong><?tr("自定义 (cron 表达式):");?></strong></td>
+<td><input type='text' id='pluginCronCustom' class='pluginCron'></td></tr>
+</table>
+</div></div>
+</center>
+
+<div id='pluginList'>
+<?=$displayOptions?>
+</div>
+<div>
+<table></table>
+<input type='button' value='<?tr("应用");?>' class='applyButton' disabled onclick='apply();'><input type='button' value='<?tr("完成");?>' onclick="done();">
+<span id='settings'></span>
+<?if ($backTopTopIncluded == "false"):?>
+<a href="#" class="back-to-top" style="display: inline;">
+<img src='/plugins/community.applications/images/up.png' style='width:50px;height:50px' href="#" class="back-to-top"></img>
+<?endif;?>
+</a></div>
+
+<a style='float:right;cursor:pointer' onclick='showCredits();'><?tr("关于");?></a><br><br></span>
+<center><a href="http://lime-technology.com/forum/index.php?topic=53693.0" target="_blank"><?tr("支持");?></a></center>
+<center><?tr("版本");?>: <strong><span class='caUpdateVersion'></span></strong></center>
+
+<span id='testing'></span>
+</FORM>

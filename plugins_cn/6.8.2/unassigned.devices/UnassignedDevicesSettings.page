@@ -1,0 +1,338 @@
+Menu="Utilities"
+Title="未分配设备"
+Icon="unlock-alt"
+---
+<?php
+/* Copyright 2015, Guilherme Jardim
+ * Copyright 2016-2020, Dan Landon
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+
+$plugin = "unassigned.devices";
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$translations = file_exists("$docroot/webGui/include/Translations.php");
+require_once "$docroot/plugins/$plugin/include/Legacy.php";
+?>
+<?if (! $translations):?>
+<?eval('?>'.parse_file("$docroot/plugins/$plugin/UnassignedDevicesSettings.page"))?>
+<?else:?>
+<?
+require_once "plugins/$plugin/include/lib.php";
+
+$config_file = "/tmp/$plugin/config/$plugin.cfg";
+$cfg = is_file($config_file) ? @parse_ini_file($config_file, true) : array();
+$version = parse_ini_file("/etc/unraid-version");
+
+$uuid_devices = array();
+$encrypt_devices = array();
+foreach (get_all_disks_info() as $d) {
+	if (($d['partitions'][0]['fstype'] == "xfs") && (! $d['partitions'][0]['mounted'])) {
+		$a = array();
+		$a['device'] = $d['device'];
+		$a['label'] = $d['serial'];
+		$uuid_devices[] = $a;
+	}
+	if ($d['partitions'][0]['fstype'] == "crypto_LUKS") {
+		$a = array();
+		$a['label'] = $d['serial'];
+		$encrypt_devices[] = $a;
+	}
+}
+
+if (count($_POST)) {
+	if ($_POST['#apply'] == "_(Apply)_") {
+		array_map(function($k, $v) use (&$cfg) { if($k[0] != "#") $cfg["Config"][$k] = $v; }, array_keys($_POST), $_POST );
+		unassigned_log("Updating share settings...");
+		remove_shares();
+		save_ini_file($config_file, $cfg);
+		reload_shares();
+		unassigned_log("Share settings updated.");
+	} else if (($_POST['#command'] == "UUID") && (isset($_POST['change_uuid']))) {
+		$dev = substr($_POST['change_uuid'], 1, 8)."1";
+		change_UUID($dev);
+	} else if ($_POST['#command'] == "chg_pass") {
+		$serial = $_POST['set_pass'];
+		$password = $_POST['password'];
+		set_config($serial, "pass", encrypt_data($password));
+	}
+}
+
+$parted = file_exists("/usr/sbin/parted");
+
+if ((! file_exists("/usr/sbin/parted") && $cfg['Config']['destructive_mode'] == "enabled")) {
+	if (! $parted) {
+		$cfg['Config']['destructive_mode'] = "disabled";
+	}
+	save_ini_file($config_file, $cfg);
+}
+if (version_compare($version['version'],"6.8.9", ">")) {
+	$cfg["Config"]["spin_down"] = "yes";
+}
+?>
+
+<script type="text/javascript" src="<?autov('/webGui/javascript/jquery.filetree.js')?>"></script>
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.filetree.css')?>" >
+
+<style type="text/css">
+	.fileTree {
+		border: solid 1px #BBB;
+		background: #FFF;
+		overflow: scroll;
+		padding: 5px;
+		position:absolute;
+		z-index:100;
+		display:none;
+		color:initial;
+	}
+</style>
+
+<script type="text/javascript">
+	function openFileBrowser(el, root, filter, on_folders, on_files, close_on_select) {
+		if (on_folders === undefined) on_folders = true;
+		if (on_files   === undefined) on_files = true;
+		if (! filter && ! on_files)   filter = 'HIDE_FILES_FILTER';
+		if (! root.trim() ) root = '/mnt/user/';
+		var p = $(el);
+		/* Skip if fileTree is already open */
+		if ( p.next().hasClass('fileTree') ){return null;}
+		/* create a random id */
+		var r = Math.floor((Math.random()*1000)+1);
+		/* Add a new span and load fileTree */
+		p.after("<span id='fileTree"+r+"' class='textarea fileTree'></span>");
+		var ft = $('#fileTree'+r);
+		ft.fileTree({
+			root: root,
+			filter: filter,
+			allowBrowsing : true
+			},
+			function(file){if(on_files){p.val(file);if(close_on_select){ft.slideUp('fast',function (){ft.remove();});}};p.trigger('change');},
+			function(folder){if(on_folders){p.val(folder);if(close_on_select){$(ft).slideUp('fast',function (){$(ft).remove();});}};p.trigger('change');}
+		);
+		/* Format fileTree according to parent position, height and width */
+		ft.css({'left':p.position().left,'top':( p.position().top + p.outerHeight() ),'width':(p.width()) });
+		/* close if click elsewhere */
+		$(document).mouseup(function(e){if (! ft.is(e.target) && ft.has(e.target).length === 0){ft.slideUp('fast',function (){$(ft).remove();});}});
+		/* close if parent changed */
+		p.bind('keydown',function(){ft.slideUp('fast',function (){$(ft).remove();});});
+		/* Open fileTree */
+		ft.slideDown('fast');
+	} 
+
+	function prepareSecurity(el) {
+		$("#smb_security").css("display", ( $(el).val() == "no" ? "none" : "block") );
+	}
+</script>
+
+<div id="title" class="nocontrol">_(常用设置)_</div>
+<form markdown="1" name="common_settings" method="POST">
+
+<?if (! $parted):?>
+:ud_settings_plus_plug:
+> **注意:** 如果想要挂载HFS+和exFAT的设备，必须安装 'Unassigned Devices Plus' 插件, 并启用破坏模式.
+:end
+<?endif;?>
+
+_(额外脚本)_:
+: <input type="text" name="common_cmd" onclick="openFileBrowser(this,'/boot/config/plugins/<?=$plugin;?>/','sh',false,true,true);" value="<?=$cfg['Config']['common_cmd'];?>">
+
+:ud_settings_common_script_plug:
+> 如果设置，该脚本将会在设备脚本之前运行。操作位于环境变量$ACTION中。确保引用所有命令及其完整路径。
+:end
+
+_(破坏模式)_:
+: <select name="destructive_mode" size="1" <?if (! $parted):?>disabled<?endif;?>>
+  <?=mk_option($cfg["Config"]["destructive_mode"], "disabled", "_(禁用)_");?>
+  <?=mk_option($cfg["Config"]["destructive_mode"], "enabled", "_(启用)_");?>
+  </select><?if (! $parted):?>&nbsp;_(必须安装 'Unassigned Devices Plus' 插件才能开启破坏模式)_.<?endif;?>
+
+:ud_settings_destructive_plug:
+> 如果启用该设置，将允许您使用"未分配设备"插件擦除和格式化分区，必须安装 'Unassigned Devices Plus' 插件才能开启。
+:end
+
+_(自动挂载USB设备)_?
+: <select name="automount_usb" size="1">
+  <?=mk_option($cfg["Config"]["automount_usb"], "no", "_(否)_");?>
+  <?=mk_option($cfg["Config"]["automount_usb"], "yes", "_(是)_");?>
+  </select>
+
+:ud_settings_mount_usb_devices_plug:
+> 如果选择了 **是(Yes)** ，将会自动挂载USB设备而无需任何额外操作
+:end
+
+_(挂载SSD使用 'discard' 选项)_?
+: <select name="discard" size="1">
+  <?=mk_option($cfg["Config"]["discard"], "yes", "_(是)_");?>
+  <?=mk_option($cfg["Config"]["discard"], "no", "_(否)_");?>
+  </select>
+
+:ud_settings_discard_plug:
+> 使用 'discard' 选项挂载支持discard的SSD.  如果你使用 SSD Trim 设置对SSD进行定期优化，你可以选择 **否(No)**.
+:end
+
+_(硬盘休眠))_?
+: <select name="spin_down" size="1" <?if (version_compare($version['version'],"6.8.9", ">")):?>disabled<?endif;?>>
+  <?=mk_option($cfg["Config"]["spin_down"], "yes", "_(是)_");?>
+  <?=mk_option($cfg["Config"]["spin_down"], "no", "_(否)_");?>
+  </select><?if (version_compare($version['version'],"6.8.9", ">")):?>&nbsp;_(Disk spin down is managed by Unraid)_.<?endif;?>
+
+:ud_settings_spin_down_plug:
+> 选择 **是(Yes)** 将会在无操作15分钟后休眠硬盘.  选择 **否(No)** 将会保持硬盘运行.  Unraid 6.9 及以上版本由系统管理硬盘休眠.
+:end
+
+_(旧挂载点兼容性)_?
+: <select name="symlinks" size="1">
+  <?=mk_option($cfg["Config"]["symlinks"], "no", "_(否)_");?>
+  <?=mk_option($cfg["Config"]["symlinks"], "yes", "_(是)_");?>
+  </select>
+
+:ud_settings_symlinks_plug:
+> 选择 **是(Yes)** 将会把 /mnt/remotes/ 超链接至 /mnt/disks/.
+>
+> 这是为了VM和Docker容器映射到 /mnt/disks/ 的向后兼容性
+> 我们鼓励您更改到 /mnt/remotes/ 挂载点.
+>
+> 如果不需要向后兼容性, 请设置 **否(No)**.
+:end
+
+&nbsp;
+: <input type="submit" name="#apply" value='_(应用)_'><input type="button" value='_(完成)_' onclick="done()">
+</form>
+
+<div id="title" class="nocontrol">_(SMB 安全性)_</div>
+<form markdown="1" name="smb_settings" method="POST">
+_(启用 SMB 安全)_?
+: <select name="smb_security" size="1" onchange="prepareSecurity(this);">
+  <?=mk_option($cfg['Config']["smb_security"], "no", "_(否)_");?>
+  <?=mk_option($cfg['Config']["smb_security"], "yes", "_(是)_");?>
+  <?=mk_option($cfg['Config']["smb_security"], "hidden", "_(是 (隐藏))_");?>
+  </select>
+
+<div id="smb_security" style="display: <?=($cfg['Config']["smb_security"] == "no" || $cfg['Config']["smb_security"] == "" ? "none" : "block");?>">
+	<?php foreach ($users as $user): ?>
+	<?php if ($user['name'] == "root"): continue; endif;?>
+	<dl>
+		<dt><?=$user['name'];?></dt>
+		<dd>
+			<select name="smb_<?=$user['name'];?>" size="1">
+			<?=mk_option($cfg["Config"]["smb_{$user[name]}"], "no-access", "_(无权限)_");?>
+			<?=mk_option($cfg["Config"]["smb_{$user[name]}"], "read-write", "_(读取)_");?>
+			<?=mk_option($cfg["Config"]["smb_{$user[name]}"], "read-only", "_(只读)_");?>
+			</select>
+		</dd>
+	</dl>
+	<?php endforeach; ?>
+</div>
+
+:ud_settings_smb_security_plug:
+> 设置 SMB 安全用户等级.
+>
+> + 设置 **是(Yes)** 来启用SMB共享安全性，设置允许用户访问以及写入
+> + 设置 **隐藏(Hidden)** 来启用SMB共享安全性，共享将不会显示，设置允许用户访问以及写入
+> + 设置 **否(No)** 将会共享设备, SMB/NFS, 和 ISO 挂载的公共读写权限.
+:end
+
+_(添加)_ 'force user = nobody' _(到 SMB 共享配置)_?
+: <select name="force_user" size="1">
+  <?=mk_option($cfg["Config"]["force_user"], "yes", "_(Yes)_");?>
+  <?=mk_option($cfg["Config"]["force_user"], "no", "_(No)_");?>
+  </select>
+
+:ud_settings_force_user_plug:
+> 有时SMB共享的权限会未按实际设置处理，启用此设置有助于获得这些权限。
+> 这适用于所有安装了"未分配设备"插件的设备。
+> 缺点是它会覆盖Linux权限组。如果您不确定这是否必要，请保持启用状态。
+:end
+
+&nbsp;
+: <input type="submit" name="#apply" value='_(Apply)_'><input type="button" value='_(Done)_' onclick="done()">
+</form>
+
+<div id="title" class="nocontrol">_(NFS 设置)_</div>
+<form markdown="1" name="nfs_settings" method="POST">
+_(启用 NFS 导出)_?
+: <select name="nfs_export" size="1" <?if ($var['shareNFSEnabled']=="no"):?>disabled<?endif;?>>
+  <?=mk_option($cfg['Config']["nfs_export"], "no", "_(否)_");?>
+  <?=mk_option($cfg['Config']["nfs_export"], "yes", "_(是)_");?>
+  </select><?if ($var['shareNFSEnabled']=="no"):?>&nbsp;_(必须启用NFS才能启用NFS导出)_.<?endif;?>
+
+<div id="nfs_security" style="display: <?=($cfg['Config']["nfs_export"] == "no" ? "none" : "block");?>">
+<dl>
+	<dt>_(NFS 安全性)_:</dt>
+	<dd>
+		<select name="nfs_security" size="1">
+		<?=mk_option($cfg["Config"]["nfs_security"], "public", "_(公共)_");?>
+		<?=mk_option($cfg["Config"]["nfs_security"], "private", "_(私有)_");?>
+		</select>
+	</dd>
+</dl>
+
+<div id="nfs_rule" style="display: <?=($cfg['Config']["nfs_security"] == "public" ? "none" : "block");?>">
+	<dl>
+		<dt>_(规则)_:</dt>
+		<dd>
+			<input type="text" name="nfs_rule" class="wide" maxlength="100" value="<?=$cfg['Config']["nfs_rule"];?>">
+		</dd>
+	</dl>
+	</div>
+</div>
+
+:ud_settings_nfs_shares_plug:
+> 选择 **是(Yes)** 来导出NFS共享。共享导出为具有读写访问权限的公共共享名或使用您设置的规则导出为私有共享，通过对文件和文件夹的权限设置来控制访问。
+:end
+
+&nbsp;
+: <input type="submit" name="#apply" value='_(应用)_'><input type="button" value='_(完成)_' onclick="done()">
+</form>
+
+<div id="title" class="nocontrol">_(设置加密硬盘密码)_</div>
+<form markdown="1" name="set_pass" method="POST">
+_(选择硬盘)_:
+: <select name="set_pass" size="1">
+
+  <?foreach ($encrypt_devices as $d) {?>
+  <?=mk_option($disk_encrypt, ($d['label']), ($d['label']))?>
+  <?}?>
+  </select>
+
+_(输入硬盘密码)_:
+
+: <input type="password" name="password" class="wide" maxlength="100" value="">
+  
+:ud_settings_disk_pass_plug:
+> 选择要设置密码的硬盘。这只是此硬盘的密码，不影响阵列密码。留空将使用阵列密码。
+:end
+
+&nbsp;
+: <form name="change_disk_pass" method="POST" action="/update.php" target="progressFrame">
+   	<input type="hidden" name="#command" value="chg_pass">
+    <input type="submit" value='_(设置密码)_' title='_(设置硬盘密码)_.' <?=count($encrypt_devices) ? "" : "disabled";?>>
+  </form>
+</form>
+
+<div id="title" class="nocontrol">_(修改硬盘 UUID)_</div>
+<form markdown="1" name="change_uuid" method="POST">
+_(选择硬盘来修改 UUID)_:
+: <select name="change_uuid" size="1">
+
+  <?foreach ($uuid_devices as $d) {?>
+  <?=mk_option($disk_uuid, ("(".$d['device'].") - ".$d['label']), ("(".$d['device'].") - ".$d['label']));?>
+  <?}?>
+  </select>
+  
+:ud_settings_change_uuid_plug:
+> 选择你想要修改 UUID 的硬盘。当使用XFS格式化的硬盘已从阵列中移除并且具有和阵列相同的UUID是。这非常有用，必须卸载驱动器才可以更改UUID。
+:end
+
+&nbsp;
+: <form name="change_disk_uuid" method="POST" action="/update.php" target="progressFrame">
+   	<input type="hidden" name="#command" value="UUID">
+    <input type="submit" value='_(修改 UUID)_' title='_(修改硬盘 UUID)_.' <?=count($uuid_devices) ? "" : "disabled";?>>
+  </form>
+</form>
+<?endif;?>

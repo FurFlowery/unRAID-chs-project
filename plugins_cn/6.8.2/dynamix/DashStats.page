@@ -1,0 +1,1122 @@
+Menu="Dashboard"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+*/
+?>
+<?
+function dmidecode($key,$n,$all=true) {
+  $entries = array_filter(explode($key,shell_exec("dmidecode -qt$n")));
+  $properties = [];
+  foreach ($entries as $entry) {
+    $property = [];
+    foreach (explode("\n",$entry) as $line) if (strpos($line,': ')!==false) {
+      list($key,$value) = explode(': ',trim($line));
+      $property[$key] = $value;
+    }
+    $properties[] = $property;
+  }
+  return $all ? $properties : $properties[0];
+}
+function truncate($string,$len) {
+  return strlen($string) < $len ? $string : substr($string,0,$len-3).'...';
+}
+function export_settings($protocol,$share) {
+  if ($protocol!='yes' || $share['export']=='-') return "-";
+  if ($share['export']=='e') return ucfirst($share['security']);
+  return '<em>'.ucfirst($share['security']).'</em>';
+}
+function data_devices($disk) {
+  return $disk['type']=='Data';
+}
+function cache_devices($disk) {
+  return $disk['type']=='Cache';
+}
+function vpn_peers($file) {
+  $peers = [];
+  $entries = array_filter(array_map('trim',preg_split('/\[(Interface|Peer)\]/',file_get_contents($file))));
+  foreach($entries as $key => $entry) {
+    $noname = true;
+    foreach (explode("\n",$entry) as $row) {
+      if ($key>1 && $row[0]=='#') {$peers[$key-1] = substr($row,1); $noname = false;}
+    }
+    if ($key>1 && $noname) $peers[$key-1] = "Peer ".($key-1);
+  }
+  return $peers;
+}
+
+$dockerd = pgrep('dockerd');
+$libvirtd = pgrep('libvirtd');
+$apcupsd = file_exists('/var/run/apcupsd.pid');
+$wireguard = is_executable('/usr/bin/wg') && file_exists('/var/log/plugins/dynamix.wireguard.plg');
+$started = $var['fsState']=='Started';
+$sleep = isset($display['sleep']);
+$cache_pool = $var['cacheSbNumDisks'];
+$array_size = $array_used = 0;
+$cache_size = $cache_used = 0;
+$extra_size = $extra_used = 0;
+$cache_type = 'disk';
+
+$parity = $var['mdResync'];
+$mover = file_exists('/var/run/mover.pid');
+$btrfs = exec('pgrep -cf /sbin/btrfs');
+
+foreach ($disks as $disk) {
+  switch ($disk['type']) {
+  case 'Data':
+    if (isset($disk['fsFree'])) {
+      $array_size += $disk['fsSize'];
+      $array_used += $disk['fsSize']-$disk['fsFree'];
+    }
+    break;
+  case 'Cache':
+    if ($disk['name']=='cache') {
+      $cache_size = $disk['fsSize'];
+      $cache_used = $disk['fsSize']-$disk['fsFree'];
+      $cache_type = $disk['rotational'] ? ($disk['luksState'] ? 'disk-encrypted' : 'disk') : 'nvme';
+    }
+    break;
+  }
+}
+foreach ($devs as $disk) {
+  $extra_size += $disk['sectors']*$disk['sector_size'];
+}
+$dot = $display['number'][0];
+$array_percent = number_format(100*$array_used/($array_size ?: 1),1,$dot,'');
+$cache_percent = number_format(100*$cache_used/($cache_size ?: 1),1,$dot,'');
+
+exec('cat /sys/devices/system/cpu/*/topology/thread_siblings_list|sort -nu', $cpus);
+$conf  = $wireguard ? glob('/etc/wireguard/wg*.conf') : [];
+$wg_up = $wireguard ? exec("wg show interfaces") : '';
+$wg_up = $wg_up ? explode(' ',$wg_up) : [];
+$up    = count($wg_up);
+$down  = max(count($conf)-$up,0);
+$fans  = exec("sensors -uA 2>/dev/null|grep -c 'fan[0-9]_input'");
+$group = $var['shareSMBEnabled']=='yes' | $var['shareAFPEnabled']=='yes' | $var['shareNFSEnabled']=='yes';
+$url   = "/webGui/include/DashUpdate.php";
+
+$names = [];
+$cache_only = $encrypted = 0;
+foreach ($shares as $share) {
+  $names[] = $share['name'];
+  if ($share['useCache']=='only') $cache_only++;
+  if ($share['luksStatus']) $encrypted++;
+}
+$names = implode(',',$names);
+
+$passwd = $nopass = 0;
+foreach ($users as $user) if ($user['passwd']=='yes') $passwd++; else $nopass++;
+
+$boot   = "/boot/config/plugins/dynamix";
+$myfile = "case-model.cfg";
+$mycase = file_exists("$boot/$myfile") ? file_get_contents("$boot/$myfile") : false;
+
+$board  = dmidecode('Base Board Information','2',0);
+$serial = "s/n: {$board['Serial Number']}";
+$board  = "{$board['Manufacturer']} {$board['Product Name']}".($board['Version'] ? ", 版本 {$board['Version']}" : "");
+
+$bios = dmidecode('BIOS Information','0',0);
+$biosdate = "BIOS 日期: ".my_time(strtotime($bios['Release Date']),$display['date']);
+$bios = $bios['Vendor'].($bios['Version'] ? ", 版本 {$bios['Version']}" : "");
+
+$cpu = dmidecode('Processor Information','4',0);
+$cpumodel = str_ireplace(["Processor","(C)","(R)","(TM)"],["","&#169;","&#174;","&#8482;"],$cpu['Version']);
+$cpumodel .= (strpos($cpumodel,'@')!==false ? "" : " @ {$cpu['Current Speed']}");
+
+$total = exec("awk '/^MemTotal/{print $2*1024}' /proc/meminfo");
+exec("ls /sys/class/net|grep -Po '^(lo|(bond|eth)\d+)$'",$ports);
+
+$sizes = ['MB','GB','TB'];
+$memory_type = $ecc = '';
+$memory_installed = $memory_maximum = 0;
+$memory_devices = dmidecode('Memory Device','17');
+foreach ($memory_devices as $device) {
+  if (!is_numeric($device['Size'][0])) continue;
+  list($size, $unit) = explode(' ',$device['Size']);
+  $base = array_search($unit,$sizes);
+  if ($base!==false) $memory_installed += $size*pow(1024,$base);
+  if (!$memory_type && $device['Type']!='Unknown') $memory_type = $device['Type'];
+}
+$memory_array = dmidecode('Physical Memory Array','16');
+foreach ($memory_array as $device) {
+  list($size, $unit) = explode(' ',$device['Maximum Capacity']);
+  $base = array_search($unit,$sizes);
+  if ($base>=1) $memory_maximum += $size*pow(1024,$base);
+  if (!$ecc && $device['Error Correction Type']!='None') $ecc = "{$device['Error Correction Type']} ";
+}
+if ($memory_installed >= 1024) {
+  $memory_installed = round($memory_installed/1024);
+  $memory_maximum = round($memory_maximum/1024);
+  $unit = 'GiB';
+} else $unit = 'MiB';
+
+// If maximum < installed then roundup maximum to the next power of 2 size of installed. E.g. 6 -> 8 or 12 -> 16
+$low = $memory_maximum < $memory_installed;
+if ($low) $memory_maximum = pow(2,ceil(log($memory_installed)/log(2)));
+?>
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.ui.css')?>">
+<style>
+div.frame{float:left;margin:14px 0 36px 0}
+div#iframe-popup{display:none;-webkit-overflow-scrolling:touch}
+div.last{padding-bottom:12px}
+div.left{float:left;width:66%;margin-top:-12px}
+div.right{float:right;margin:-12px 20px 0 0;text-align:center}
+span.ctrl{float:right;margin-right:10px}
+span.outer{float:left}
+span.inner{width:<?=$theme1?153:140?>px}
+span.ups{width:124px;display:inline-block}
+span.busy,i.inactive{opacity:0.5}
+span#inbound{width:75px;display:inline-block}
+span#load{width:80px;display:inline-block}
+span#util{margin-left:20px}
+span[id^=cpu],span[id^=sys]{width:0}
+i.heat{margin-left:8px}
+a.cpu_close,span.hand{cursor:pointer}
+tr.hidden{display:none;height:0;lineheight:0}
+td.none{text-align:center;padding-top:12px}
+input[value=Edit]{margin:12px 0 0 0;padding:5px 10px}
+.sys_view,.mb_view,.cpu_view,.cpu_open,.mem_view,.port_view,.ups_view,.fan_view,.docker_view,.vm_view,.parity_view,.array_view,.cache_view,.my_view,.extra_view{display:none}
+.share1,.share2,.share3,.view1,.view2,.view3,.user1,.user2,.user3{display:none}
+#shares_view_on,#users_view_on,#array_view_on,#cache_view_on,#extra_view_on{display:none}
+form[name=boot]{display:none}
+.flat{height:0;lineheight:0}
+<?if ($themes2):?>
+.switch-button-background{top:16px}
+.switch-button-label{margin-top:0}
+<?else:?>
+.switch-button-background{top:12px}
+<?endif;?>
+</style>
+<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.docker.manager/javascript/docker.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.vm.manager/javascript/vmmanager.js')?>"></script>
+
+<?$N=0?>
+<div class='frame'>
+<table id='db-box1' class='share_status dashboard box1'>
+<thead sort='<?=$N?>' class='sortable'><tr><td></td><td colspan='3' class='next'><?=$var['NAME']?>
+<i class='fa fa-fw chevron mt0' id='sys_view' onclick='toggleChevron("sys_view",0)'></i>
+<a href='/Dashboard/Identification' title='转到标识设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='ctrl'>
+<?if ($parity||$mover||$btrfs):?>
+<span class='fa fa-fw fa-<?=$started?'stop':'play'?>-circle busy' title='<?=$started?'停止':'启动'?> 阵列'></span>
+<?else:?>
+<span class='fa fa-fw fa-<?=$started?'stop':'play'?>-circle hand' title='<?=$started?'停止':'启动'?> 阵列' onclick='<?=$started?'Stop':'Start'?>Array()'></span>
+<?endif;?>
+<?if($sleep):?><span class='fa fa-fw fa-moon-o hand' title='使系统进入睡眠状态' onclick='Sleep()'></span><?endif;?>
+<span class='fa fa-fw fa-refresh hand' title='重启系统' onclick='Reboot()'></span>
+<span class='fa fa-fw fa-power-off hand' title='关闭系统' onclick='Shutdown()'></span></span>
+</td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sys_view sortable'>
+<tr><td></td><td colspan='3'>
+<div class='left'>
+<span class='header'>描述</span><span class='text'><br>
+<?=$var['COMMENT']?><br>
+<?=$var['SYS_MODEL']?><br><br></span>
+<span class='header'>注册</span><br>Unraid OS <b><em><?=$var['regTy']?></em></b><br><br>
+<span class='header'>运行时间</span><br><span class='uptime'></span>
+</div>
+<div class='right'>
+<span id='casing'>
+<?if ($mycase):?>
+<?if (substr($mycase,-4)!='.png'):?>
+<i id='mycase' class='case-<?=$mycase?>'></i><br>
+<?else:?>
+<img id='mycase' src='<?=autov("/webGui/images/$mycase")?>'><br>
+<?endif;?>
+<?else:?>
+<i id='mycase' class='fa fa-hdd-o'></i><br>
+<?endif;?>
+</span>
+<input type='button' value='编辑' onclick='openBox("/webGui/include/SelectCase.php?file=<?=$myfile?>&csrf=<?=$var['csrf_token']?>","选择设备模型",700,980,true,"setCase");return false'>
+</div>
+</td><td></td></tr>
+</tbody>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-motherboard'></i><div class='section'>主板<br><span id='mb-temp'></span><br><br></div>
+<i class='fa fa-fw chevron' id='mb_view' onclick='toggleChevron("mb_view",0)'></i>
+<a href='#' onclick='InfoButton();' title='显示信息'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='mb_view'><td></td><td colspan='3'><?=$board?><br><?=$bios?><br><?=$biosdate?></td><td></td></tr>
+</tbody>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-cpu'></i><div class='section'>处理器<br>
+<span id='load'>负载: <span class='cpu'>0%</span></span><span id='cpu-temp'></span><br><br></div>
+<i class='fa fa-fw chevron' id='cpu_view' onclick='toggleChevron("cpu_view",1)'></i>
+<a href='/Dashboard/CPUset' title='转到 CPU 绑定设置'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='cpu_view'><td></td><td colspan='3'><?=$cpumodel?><br>
+<a onclick='toggleCPU()' title='单击以切换详细信息' class='cpu_close'>显示详细信息</a></td><td></td></tr>
+<tr class='cpu_open'><td></td><td>总负载:</td>
+<td colspan='2'><span class='cpu load'>0%</span><div class='usage-disk sys'><span id='cpu'></span><span></span></div></td><td></td></tr>
+<?
+foreach ($cpus as $pair) {
+  list($cpu1, $cpu2) = preg_split('/[,-]/',$pair);
+  echo "<tr class='cpu_open'><td></td>";
+  if ($cpu2)
+    echo "<td>CPU $cpu1 - 超线程 $cpu2</td><td><span class='cpu$cpu1 load'>0%</span><div class='usage-disk sys'><span id='cpu$cpu1'></span><span></span></div></td><td><span class='cpu$cpu2 load'>0%</span><div class='usage-disk sys'><span id='cpu$cpu2'></span><span></span></div></td>";
+  else
+    echo "<td>CPU $cpu1</td><td colspan='2'><span class='cpu$cpu1 load'>0%</span><div class='usage-disk sys'><span id='cpu$cpu1'></span><span></span></div></td>";
+  echo "<td></td></tr>";
+}
+?>
+</tbody>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-ram'></i><div class='section'>内存<br><span><?="$memory_installed $unit $memory_type $ecc"?><span id='util'>使用率: <span class='sys0'>0%</span></span><br><br></div>
+<i class='fa fa-fw chevron' id='mem_view' onclick='toggleChevron("mem_view",0)'></i>
+<a href='/Dashboard/Processes' title='查看正在运行的进程'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='mem_view'><td></td><td>最大容量: <?="$memory_maximum $unit"?><?=$low?'*':''?></td><td><i class='mm'>内存</i><span class='sys0 load'>0%</span><div class='usage-disk sys'><span id='sys0'></span><span></span></div></td>
+<td><i class='mm'>Flash</i><span class='sys1 load'>0%</span><div class='usage-disk sys'><span id='sys1'></span><span></span></div></td><td></td></tr>
+<tr class='mem_view'><td></td><td>可用容量: <?=my_scale($total,$unit,1,null,1024)." $unit"?></td><td><i class='mm'>日志</i><span class='sys2 load'>0%</span><div class='usage-disk sys'><span id='sys2'></span><span></span></div></td>
+<td><?if (exec("df /var/lib/docker|grep -om1 '^/'")):?><i class='mm'>Docker</i><span class='sys3 load'>0%</span><div class='usage-disk sys'><span id='sys3'></span><span></span></div><?endif;?></td><td></td></tr>
+</tbody>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-ethernet'></i><div class='section'>接口<br>
+<select name="port_select" size="1" onchange="portSelect(this.value)">
+<?foreach ($ports as $port):?>
+<?=mk_option("",$port,$port)?>
+<?endforeach;?>
+</select>
+<span>入站: <span id='inbound'>---</span>出站: <span id='outbound'>---</span></span><br><br></div>
+<i class='fa fa-fw chevron' id='port_view' onclick='toggleChevron("port_view",2)'></i>
+<a href='/Dashboard/NetworkSettings' title='转到网络设置'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='port_view'><td></td>
+<td><select class='port_view' name="enter_view" size="1" onchange="changeView(this.value)">
+<?=mk_option("", "0", "基本信息")?>
+<?=mk_option("", "1", "计数信息")?>
+<?=mk_option("", "2", "错误信息")?>
+</select></td>
+<td><i class='view1'>状态</i><i class='view2'>收到数据包</i><i class='view3'>收到计数</i></td>
+<td><i class='view1'></i><i class='view2'>传输数据包</i><i class='view3'>发送计数</i></td><td></td></tr>
+<?
+$c = 0;
+foreach ($ports as $port) {
+  $last = ($port=='lo')?' last':'';
+  echo "<tr class='view1{$last}'><td></td><td>$port</td><td colspan='2' id='main".($c++)."'></td><td></td></tr>";
+}
+$c = 0;
+foreach ($ports as $port) {
+  $last = ($port=='lo')?' last':'';
+  echo "<tr class='view2{$last}'><td></td><td>$port</td><td id='port{$c}'></td><td id='port".($c+1)."'></td><td></td></tr>";
+  $c += 2;
+}
+$c = 0;
+foreach ($ports as $port) {
+  echo "<tr class='view3'><td></td><td>$port</td><td id='link{$c}'></td><td id='link".($c+1)."'></td><td></td></tr>";
+  $c += 2;
+}
+?>
+</tbody>
+<?if ($wireguard):?>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-vpn'></i><div class='section'>VPN<br><span class='ups'>活动隧道: <span id='vpn-active'><?=$up?></span></span><span class='ups'>非活动隧道: <span id='vpn-inactive'><?=$down?></span></span><br><br></div>
+<i class='fa fa-fw chevron' id='vpn_view' onclick='toggleChevron("vpn_view",0)'></i>
+<a href='/Settings/VPNmanager' title='转到 VPN 设置'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<?foreach ($conf as $wg):?>
+<?$vpn = basename($wg,'.conf'); $peers = vpn_peers($wg);?>
+<tr class='vpn_view'><td></td><td class='vpn'><i class='icon-vpn vpn<?=in_array($vpn,$wg_up)?'':' inactive'?>' onclick="toggleVPN($(this),'<?=$vpn?>')" title="切换隧道状态"></i><?="Tunnel $vpn"?></td><td class='vpn right'>活动</td><td class='vpn right'>握手</td><td></td></tr>
+<?foreach ($peers as $i => $peer):?>
+<tr class='vpn_view'><td></td><td class='left'><?=$peer?></td><td class='right' id='<?="$vpn-rx-".($i-1)?>'>---</td><td class='right' id='<?="$vpn-hs-".($i-1)?>'>不活动</td><td></td></tr>
+<?endforeach;?>
+<?endforeach;?>
+</tbody>
+<?endif;?>
+<?if ($apcupsd):?>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-ups'></i><div class='section'>功率<br>
+<span>UPS 负载: <span id='ups_loadpct'></span></span><br><br></div>
+<i class='fa fa-fw chevron' id='ups_view' onclick='toggleChevron("ups_view",0)'></i>
+<a href='/Dashboard/UPSsettings' title='转到 UPS 设置'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='ups_view'><td></td><td colspan='3'>
+<span class='ups'>UPS 状态:</span><span id='ups_status'></span><br>
+<span class='ups'>电池电量:</span><span id='ups_bcharge'></span><br>
+<span class='ups'>剩余运行时间:</span><span id='ups_timeleft'></span><br>
+<span class='ups'>标称功率:</span><span id='ups_nompower'></span><br>
+</td><td></td></tr>
+</tbody>
+<?endif;?>
+<?if ($fans):?>
+<thead sort='<?=++$N?>'><tr class='hidden'><td></td><td colspan='3'></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-fan'></i><div class='section'>气流<br><span>风扇数: <?=$fans?></span><br><br></div>
+<i class='fa fa-fw chevron' id='fan_view' onclick='toggleChevron("fan_view",0)'></i>
+<a href='/Dashboard/FanSettings' title='转到风扇设置'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<?for ($f=0; $f<$fans; $f+=2) {
+  if ($f+1<$fans) echo "<tr class='fan_view'><td></td><td>FAN ".($f)." - FAN ".($f+1)."</td><td id='fan{$f}'>"."</td><td id='fan".($f+1)."'></td><td></td></tr>";
+  else echo "<tr class='fan_view'><td></td><td>FAN ".($f)."</td><td colspan='2' id='fan{$f}'></td><td></td></tr>";
+}?>
+</tbody>
+<?endif;?>
+</table>
+
+<?$N=0?>
+<table id='db-box3' class='share_status dashboard box3'>
+<?if ($display['dashapps']!='none'):?>
+<?if ($dockerd && ($display['dashapps']=='icons' || $display['dashapps']=='docker')):?>
+<thead sort='<?=$N?>' class='sortable'><tr><td></td><td colspan='4' class='next'>Docker 容器<i class='fa fa-fw chevron mt0' id='docker_view' onclick='toggleChevron("docker_view",0)'></i>
+<a href='/Dashboard/DockerSettings' title='转到 Docker 设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='info apps'><input type='checkbox' id='apps'></span></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='docker_view sortable'></tbody>
+<?endif;?>
+<?if ($libvirtd && ($display['dashapps']=='icons' || $display['dashapps']=='vms')):?>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='4' class='next'>虚拟机<i class='fa fa-fw chevron mt0' id='vm_view' onclick='toggleChevron("vm_view",0)'></i>
+<a href='/Dashboard/VMSettings' title='转到虚拟机设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='info vms'><input type='checkbox' id='vms'></span></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='vm_view sortable'></tbody>
+<?endif;?>
+<?endif;?>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='4' class='next'>共享<i class='fa fa-fw chevron mt0' id='shares_view' onclick='toggleChevron("shares_view",4)'></i>
+<a href='/Shares' title='转到共享设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='info'>共享数量: <?=count($shares)?>  仅为缓存: <?=$cache_only?>  已加密: <?=$encrypted?> </span>
+<?if ($group):?>
+<select name="enter_share" size="1" onchange="changeMode(this.value)">
+<?if ($var['shareSMBEnabled']=='yes'):?>
+<?=mk_option("", "0", "SMB")?>
+<?endif;?>
+<?if ($var['shareAFPEnabled']=='yes'):?>
+<?=mk_option("", "1", "AFP")?>
+<?endif;?>
+<?if ($var['shareNFSEnabled']=='yes'):?>
+<?=mk_option("", "2", "NFS")?>
+<?endif;?>
+</select>
+<?endif;?>
+</td><td></td></tr>
+<tr id='shares_view_on'><td></td><td>名称</td><td>描述</td><td>安全</td><td>连接数</td><td></td></tr>
+</thead>
+<?if ($var['shareSMBEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='smb share share1 sortable'><?
+$i = 0;
+foreach ($shares as $name => $share) {
+  $i++;
+  $list = "<a href=\"$path/Share?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  if ($share['luksStatus']>0) $list = str_replace('blue-text','green-text',$list);
+  elseif ($share['useCache']=='only') $list = str_replace('blue-text','orange-text',$list);
+  $comment = truncate($share['comment'],40);
+  $security = export_settings($var['shareSMBEnabled'], $sec[$name]);
+  echo "<tr><td></td><td><i class='icon-folder'></i>$list</td><td>$comment</td><td>$security</td><td id='share{$i}'>0</td><td></td></tr>";
+}
+if (!count($shares)) echo "<tr><td></td><td colspan='4' class='none'>当前没有共享</td><td></td></tr>";
+?></tbody>
+<?endif;?>
+<?if ($var['shareAFPEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='afp share share2 sortable'><?
+foreach ($shares as $name => $share) {
+  $list = "<a href=\"$path/Share?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  if ($share['luksStatus']>0) $list = str_replace('blue-text','green-text',$list);
+  elseif ($share['useCache']=='only') $list = str_replace('blue-text','orange-text',$list);
+  $comment = truncate($share['comment'],40);
+  $security = export_settings($var['shareAFPEnabled'], $sec_afp[$name]);
+  echo "<tr><td></td><td><i class='icon-folder'></i>$list</td><td>$comment</td><td>$security</td><td>-</td><td></td></tr>";
+}
+if (!count($shares)) echo "<tr><td></td><td colspan='4' class='none'>当前没有共享</td><td></td></tr>";
+?></tbody>
+<?endif;?>
+<?if ($var['shareNFSEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='nfs share share3 sortable'><?
+foreach ($shares as $name => $share) {
+  $list = "<a href=\"$path/Share?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  if ($share['luksStatus']>0) $list = str_replace('blue-text','green-text',$list);
+  elseif ($share['useCache']=='only') $list = str_replace('blue-text','orange-text',$list);
+  $comment = truncate($share['comment'],40);
+  $security = export_settings($var['shareNFSEnabled'], $sec_nfs[$name]);
+  echo "<tr><td></td><td><i class='icon-folder'></i>$list</td><td>$comment</td><td>$security</td><td>-</td><td></td></tr>";
+}
+if (!count($shares)) echo "<tr><td></td><td colspan='4' class='none'>目前没有共享</td><td></td></tr>";
+?></tbody>
+<?endif;?>
+<?if (!$group):?>
+<tbody sort='<?=$N?>' class='share sortable'><?
+foreach ($shares as $name => $share) {
+  $list = "<a href=\"$path/Share?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  if ($share['luksStatus']>0) $list = str_replace('blue-text','green-text',$list);
+  elseif ($share['useCache']=='only') $list = str_replace('blue-text','orange-text',$list);
+  $comment = truncate($share['comment'],40);
+  echo "<tr><td></td><td><i class='icon-folder'></i>$list</td><td>$comment</td><td>-</td><td>-</td><td></td></tr>";
+}
+if (!count($shares)) echo "<tr><td></td><td colspan='4' class='none'>目前没有共享</td><td></td></tr>";
+?></tbody>
+<?endif;?>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='4' class='next'>用户<i class='fa fa-fw chevron mt0' id='users_view' onclick='toggleChevron("users_view",3)'></i>
+<a href='/Users' title='转到用户设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='info'>用户数量: <?=count($users)?> 有 <?=$nopass?> 个未受密码保护</span>
+</td><td></td></tr><tr id='users_view_on'><td></td><td>名称</td><td>描述</td><td>写入</td><td>读取</td><td></td></tr></thead>
+<?if ($var['shareSMBEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='smb user user1 sortable'><?
+foreach ($users as $user) {
+  $name = $user['name'];
+  $list = "<a href=\"$path/UserEdit?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  $desc = truncate($user['desc'],40);
+  if ($name=='root') {
+    $write = '-'; $read = '-';
+  } else {
+    $write = 0; $read = 0;
+    foreach ($shares as $share) {
+      $access = $sec[$share['name']];
+      if ($access['export']=='-') continue;
+      switch ($access['security']) {
+      case 'public':
+        $write++;
+        break;
+      case 'secure':
+        if (in_array($name,explode(',',$access['writeList']))) $write++; else $read++;
+        break;
+      case 'private':
+        if (in_array($name,explode(',',$access['writeList']))) $write++;
+        if (in_array($name,explode(',',$access['readList']))) $read++;
+        break;
+      }
+    }
+  }
+  if ($user['passwd']!='yes') $list = str_replace('blue-text','orange-text',$list);
+  echo "<tr><td></td><td><i class='icon-user'></i>$list</td><td>$desc</td><td>$write</td><td>$read</td><td></td></tr>";
+}
+?></tbody>
+<?endif;?>
+<?if ($var['shareAFPEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='afp user user2 sortable'><?
+foreach ($users as $user) {
+  $name = $user['name'];
+  $list = "<a href=\"$path/UserEdit?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  $desc = truncate($user['desc'],40);
+  if ($name=='root') {
+    $write = '-'; $read = '-';
+  } else {
+    $write = 0; $read = 0;
+    foreach ($shares as $share) {
+      $access = $sec_afp[$share['name']];
+      if ($access['export']=='-') continue;
+      switch ($access['security']) {
+      case 'public':
+        $write++;
+        break;
+      case 'secure':
+        if (in_array($name,explode(',',$access['writeList']))) $write++; else $read++;
+        break;
+      case 'private':
+        if (in_array($name,explode(',',$access['writeList']))) $write++;
+        if (in_array($name,explode(',',$access['readList']))) $read++;
+        break;
+      }
+    }
+  }
+  if ($user['passwd']!='yes') $list = str_replace('blue-text','orange-text',$list);
+  echo "<tr><td></td><td><i class='icon-user'></i>$list</td><td>$desc</td><td>$write</td><td>$read</td><td></td></tr>";
+}
+?></tbody>
+<?endif;?>
+<?if ($var['shareNFSEnabled']=='yes'):?>
+<tbody sort='<?=$N?>' class='nfs user user3 sortable'><?
+foreach ($users as $user) {
+  $name = $user['name'];
+  $list = "<a href=\"$path/UserEdit?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  $desc = truncate($user['desc'],40);
+  $write = '-'; $read = '-';
+  if ($user['passwd']!='yes') $list = str_replace('blue-text','orange-text',$list);
+  echo "<tr><td></td><td><i class='icon-user'></i>$list</td><td>$desc</td><td>$write</td><td>$read</td><td></td></tr>";
+}
+?></tbody>
+<?endif;?>
+<?if (!$group):?>
+<tbody sort='<?=$N?>' class='user sortable'><?
+foreach ($users as $user) {
+  $name = $user['name'];
+  $list = "<a href=\"$path/UserEdit?name=".urlencode($name)."\" class=\"blue-text\" title=\"$name 设置\">".truncate($name,20)."</a>";
+  $desc = truncate($user['desc'],40);
+  if ($user['passwd']!='yes') $list = str_replace('blue-text','orange-text',$list);
+  echo "<tr><td></td><td><i class='icon-user'></i>$list</td><td>$desc</td><td>-</td><td>-</td><td></td></tr>";
+}
+?></tbody>
+<?endif;?>
+</table>
+
+<?$N=0?>
+<table id='db-box2' class='share_status dashboard box2'>
+<thead sort='<?=$N?>' class='sortable'><tr><td></td><td colspan='5' class='next'>校验<i class='fa fa-fw chevron mt0' id='parity_view' onclick='toggleChevron("parity_view",0)'></i>
+<a href='/Dashboard/Scheduler' title='转到计划任务设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<span class='info title'></span></td><td></td></tr></thead>
+<tbody sort='<?=$N?>' class='parity_view sortable'>
+<tr><td></td><td colspan='5' id='parity'></td><td></td></tr>
+<tr><td></td><td colspan='5' id='program'></td><td></td></tr>
+</tbody>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='5' class='next'>阵列<?if (!$started):?> (已停止)<?endif;?><i class='fa fa-fw chevron mt0' id='array_view' onclick='toggleChevron("array_view",0)'></i>
+<a href='/Dashboard/Device?name=disk1' title='转到硬盘设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<?if ($started):?><span class='info'><?=my_scale($array_used*1024,$unit)." $unit"?> / <?=my_scale($array_size*1024,$unit,-1,-1)." $unit"?> 已使用 (<?=$array_percent?> %)</span><?endif;?>
+</td><td></td></tr>
+<tr class='my_view'><td></td><td id='array_info' colspan='5'></td><td></td></tr>
+<tr id='array_view_on'><td></td><td>设备</td><td>状态</td><td>温度</td><td>SMART</td><td>使用率</td><td></td></tr>
+</thead>
+<tbody sort='<?=$N?>' class='array_view sortable' id='array_list'></tbody>
+<?if ($cache_pool):?>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='5' class='next'>缓存<?if (!$started):?> (已停止)<?endif;?><i class='fa fa-fw chevron mt0' id='cache_view' onclick='toggleChevron("cache_view",0)'></i>
+<a href='/Dashboard/Device?name=cache' title='转到缓存设置'><i class='fa fa-fw fa-cog chevron mt0'></i></a>
+<?if ($started):?><span class='info'><?=my_scale($cache_used*1024,$unit)." $unit"?> / <?=my_scale($cache_size*1024,$unit,-1,-1)." $unit"?> 已使用 (<?=$cache_percent?> %)</span><?endif;?>
+</td><td></td></tr>
+<tr class='my_view'><td></td><td id='cache_info' colspan='5'></td><td></td></tr>
+<tr id='cache_view_on'><td></td><td>设备</td><td>状态</td><td>温度</td><td>SMART</td><td>使用率</td><td></td></tr>
+</thead>
+<tbody sort='<?=$N?>' class='cache_view sortable' id='cache_list'></tbody>
+<?endif;?>
+<?if ($devs):?>
+<thead sort='<?=++$N?>' class='sortable'><tr><td></td><td colspan='5' class='next'>未分配<i class='fa fa-fw chevron mt0' id='extra_view' onclick='toggleChevron("extra_view",0)'></i><span class='info'></span></td><td></td></tr>
+<tr class='my_view'><td></td><td id='extra_info' colspan='5'></td><td></td></tr>
+<tr id='extra_view_on'><td></td><td>设备</td><td>状态</td><td>温度</td><td>SMART</td><td>使用率</td><td></td></tr>
+</thead>
+<tbody sort='<?=$N?>' class='extra_view sortable' id='extra_list'></tbody>
+<?endif;?>
+</table>
+</div>
+<form name='boot' method='POST' action='/webGui/include/Boot.php'>
+<input type='hidden' name='csrf_token' value='<?=$var['csrf_token']?>'>
+<input type='hidden' name='cmd' value=''>
+</form>
+<div id="iframe-popup"></div>
+&nbsp;
+<script>
+var timer30 = null;
+var orange = 70;
+var red = 90;
+var timestamp = 0, rx_bytes = 0, tx_bytes = 0;
+var port_select = $.cookie('port_select')||'<?=$ports[0]?>';
+
+<?if ($wireguard):?>
+Number.prototype.pad = function(size){var s=String(this);while(s.length<(size||2)){s='0'+s;}return s;}
+
+function toggleVPN(id,vtun) {
+  var up = $('#vpn-active');
+  var down = $('#vpn-inactive');
+  if (id.hasClass('inactive')) {
+    $.post('/webGui/include/update.wireguard.php',{'#cmd':'toggle','#wg':'start','#vtun':vtun},function(on){if (on){
+      id.removeClass('inactive');
+      up.text(up.text()*1+1);
+      if (down.text()>0) down.text(down.text()*1-1);
+    }});
+  } else {
+    $.post('/webGui/include/update.wireguard.php',{'#cmd':'toggle','#wg':'stop','#vtun':vtun});
+    id.addClass('inactive');
+    down.text(down.text()*1+1);
+    if (up.text()>0) up.text(up.text()*1-1);
+    $('td[id^="'+vtun+'-hs"]').text('不活动');
+    $('td[id^="'+vtun+'-rx"]').text('---');
+  }
+}
+<?endif;?>
+function noApps() {
+  if ($('span.outer.apps:visible').length==0) $('#no_apps').show(); else $('#no_apps').hide();
+}
+function noVMs() {
+  if ($('span.outer.vms:visible').length==0) $('#no_vms').show(); else $('#no_vms').hide();
+}
+function loadlist(init) {
+  if (init) {
+    $('#apps').switchButton({labels_placement:'left', off_label:'所有应用', on_label:'仅运行中的',  checked:$.cookie('my_apps')=='startedOnly'});
+    $('#vms').switchButton({labels_placement:'left', off_label:'所有虚拟机', on_label:'仅运行中的',  checked:$.cookie('my_vms')=='startedOnly'});
+    $('#apps').change(function(){
+      $('span.outer.apps.已停止').finish().toggle('fast',function(){noApps();})
+      $('#apps').is(':checked') ? $.cookie('my_apps','startedOnly',{expires:3650}) : $.removeCookie('my_apps');
+    });
+    $('#vms').change(function(){
+      $('span.outer.vms.已停止').finish().toggle('fast',function(){noVMs();});
+      $('#vms').is(':checked') ? $.cookie('my_vms','startedOnly',{expires:3650}) : $.removeCookie('my_vms');
+    });
+    context.init({preventDoubleContext:false,left:true,above:false});
+  }
+  $.post('/webGui/include/DashboardApps.php',{display:'<?=$display['dashapps']?>',docker:'<?=$dockerd?>',vms:'<?=$libvirtd?>'},function(d) {
+    var data = d.split(/\0/);
+    $('.docker_view').html(data[0]);
+    $('.vm_view').html(data[1]);
+    var script = document.createElement('script');
+    script.innerHTML = data[2];
+    document.head.appendChild(script);
+    if ($.cookie('my_apps')!=null) $('span.apps.已停止').hide(0,function(){noApps();});
+    if ($.cookie('my_vms')!=null) $('span.vms.已停止').hide(0,function(){noVMs();});
+    context.init({preventDoubleContext:false,left:true,above:false});
+  });
+}
+function setCase() {
+  $.post('/webGui/include/SelectCase.php',{mode:'get',file:'<?=$myfile?>'},function(model){
+    if (!model) {
+      $('#casing').html("<i id='mycase' class='fa fa-hdd-o'></i><br>");
+    } else if (model.indexOf('.png')<0) {
+      $('#casing').html("<i id='mycase' class='case-"+model+"'></i><br>");
+    } else {
+      var now = new Date();
+      $('#casing').html("<img id='mycase' src='/webGui/images/"+model+"?v="+now.getTime()+"'><br>");
+    }
+  });
+}
+
+function changeMode(item) {
+  var user = $.cookie('users_view');
+  var share = $.cookie('shares_view');
+  if (item==0) $.removeCookie('enter_share'); else $.cookie('enter_share',item,{expires:3650});
+<?if ($var['shareSMBEnabled']=='yes'):?>
+  if (item==0 && user==null) $('.smb.user1').show(); else $('.smb.user1').hide();
+  if (item==0 && share==null) $('.smb.share1').show(); else $('.smb.share1').hide();
+<?endif;?>
+<?if ($var['shareAFPEnabled']=='yes'):?>
+  if (item==1 && user==null) $('.afp.user2').show(); else $('.afp.user2').hide();
+  if (item==1 && share==null) $('.afp.share2').show(); else $('.afp.share2').hide();
+<?endif;?>
+<?if ($var['shareNFSEnabled']=='yes'):?>
+  if (item==2 && user==null) $('.nfs.user3').show(); else $('.nfs.user3').hide();
+  if (item==2 && share==null) $('.nfs.share3').show(); else $('.nfs.share3').hide();
+<?endif;?>
+}
+function changeView(item) {
+  if (item==0) $.removeCookie('enter_view'); else $.cookie('enter_view',item,{expires:3650});
+  if (item==0) $('.view1').show(); else $('.view1').hide();
+  if (item==1) $('.view2').show(); else $('.view2').hide();
+  if (item==2) $('.view3').show(); else $('.view3').hide();
+  clearTimeout(timer30);
+  update30();
+}
+function smartMenu(table) {
+  $(table).find('[id^="smart-"]').each(function() {
+    var opts = [];
+    var id = '#'+$(this).attr('id');
+    var page = $(this).attr('name');
+    var view = $(this).attr('class');
+    var disk = id.substr(id.indexOf('-')+1);
+    opts.push({text:'属性',icon:'fa-sitemap',action:function(e){e.preventDefault();attributes(page,disk);}});
+    opts.push({divider:true});
+    opts.push({text:'功能',icon:'fa-user',action:function(e){e.preventDefault();capabilities(page,disk);}});
+    opts.push({divider:true});
+    opts.push({text:'身份标识',icon:'fa-home',action:function(e){e.preventDefault();identity(page,disk);}});
+    if (view.search('green-text') == -1) {
+      opts.push({divider:true});
+      opts.push({text:'确认',icon:'fa-check-square-o',action:function(e){e.preventDefault();acknowledge(disk);}});
+    }
+    context.attach(id,opts);
+  });
+}
+function portMenu() {
+  var select = 'select[name="port_select"]';
+  var option = $(select+' option');
+  for (var i=0; i < option.length; i++) {
+    if (option[i].value == port_select) {option[i].selected = true; break;}
+  }
+}
+function portSelect(name) {
+  $.cookie('port_select',name,{expires:3650});
+  port_select = name;
+  timestamp = 0, rx_bytes = 0, tx_bytes = 0;
+}
+function moreInfo(data,table) {
+  var info = [];
+  if (data[1]>0) info.push(data[1]+" failed device"+(data[1]==1?'':''));
+  if (data[2]>0) info.push(data[2]+" heat warning"+(data[2]==1?'':''));
+  if (data[3]>0) info.push(data[3]+" SMART error"+(data[3]==1?'':''));
+  if (data[4]>0) info.push(data[4]+" utilization warning"+(data[4]==1?'':''));
+  return info.length ? "<div class='last'><i class='icon-u-triangle failed'></i><span class='failed'>"+table+" has "+info.join('. ')+".</span></div>" : "";
+}
+<?if ($wireguard):?>
+function update1() {
+  $.post('/webGui/include/update.wireguard.php',{'#cmd':'stats','#vtun':'*'},function(data){
+    var n = {};
+    var row = data.split('\0');
+    for (var i=0; i < row.length; i++) {
+      var info = row[i].split(';');
+      vtun = info[0];
+      if (typeof n[vtun]=='undefined') n[vtun] = 0; else n[vtun]++;
+      if (info[1] == 0) {
+        $('td#'+vtun+'-hs-'+n[vtun]).text('not received');
+      } else if (info[1] > 86400) {
+        var d = parseInt(info[1]/86400);
+        var s = d==1 ? '' : 's';
+        $('td#'+vtun+'-hs-'+n[vtun]).text(d+' day'+s+' 前');
+      } else {
+        var h = parseInt(info[1]/3600).pad();
+        var m = parseInt(info[1]/60%60).pad();
+        var s = parseInt(info[1]%60).pad();
+        $('td#'+vtun+'-hs-'+n[vtun]).text(h+':'+m+':'+s+' 前');
+      }
+      $('td#'+vtun+'-rx-'+n[vtun]).html(info[2]+'&nbsp;<i class="fa fa-fw fa-arrow-up"></i>&nbsp;&nbsp;&nbsp;'+info[3]+'&nbsp;<i class="fa fa-fw fa-arrow-down"></i>');
+    }
+    setTimeout(update1,1000);
+  });
+}
+<?endif;?>
+function update5() {
+<?if ($fans):?>
+  $.post('<?=$url?>',{cmd:'fan'},function(data) {
+    $.each(data.split('\0'),function(k,v) {$('#fan'+k).html(v);});
+  });
+<?endif;?>
+  $.post('<?=$url?>',{cmd:'speed',port:port_select,timestamp:timestamp,rx_bytes:rx_bytes,tx_bytes:tx_bytes},function(d) {
+    var data = d.split('\0');
+    $('#inbound').text(data[0]);
+    $('#outbound').text(data[1]);
+    timestamp = data[2];
+    rx_bytes = data[3];
+    tx_bytes = data[4];
+    setTimeout(update5,5000);
+  });
+}
+function update15() {
+<?if ($var['fsState']=='Started' && $group):?>
+  var tag = $('.smb').is(':visible') ? 'smb' : $('.afp').is(':visible') ? 'afp' : $('.nfs').is(':visible') ? 'nfs' : '';
+  $.post('<?=$url?>',{cmd:'shares',com:tag,names:'<?=addslashes(htmlspecialchars($names))?>'},function(data) {
+    $.each(data.split('\0'),function(k,v) {$('#share'+(k+1)).html(v);});
+  });
+<?endif;?>
+<?if ($apcupsd):?>
+  $.get('/plugins/dynamix.apcupsd/include/UPSstatus.php',{all:'false'},function(d) {
+    var data = d.replace(/<\/?tr>/g,'').replace(/<td/g,'<span').replace(/td>/g,'span>;').split(';');
+    $('#ups_status').html(data[0]);
+    $('#ups_bcharge').html(data[1]);
+    $('#ups_timeleft').html(data[2]);
+    $('#ups_nompower').html(data[3]);
+    $('#ups_loadpct').html(data[5].replace('Percent','%')+' - '+data[4]);
+  });
+<?endif;?>
+  $.post('<?=$url?>',{cmd:'status',number:'<?=$display['number']?>'},function(data) {$('span.info.title').html(data);});
+  $.post('<?=$url?>',{cmd:'parity',time:'<?=$display['date'].($display['date']!='%c'?", {$display['time']}":"")?>'},function(d) {
+    var data = d.split('\0');
+    $('#parity').html(data[0]);
+    $('#program').html(data[1]);
+    setTimeout(update15,15000);
+  });
+}
+function update30() {
+  var tag = $.cookie('enter_view')==0 ? 'main' : $.cookie('enter_view')==1 ? 'port' : $.cookie('enter_view')==2 ? 'link' : 'main';
+  $.post('<?=$url?>',{cmd:'port',view:tag,ports:'<?=implode(',',$ports)?>'},function(data) {
+    $.each(data.split('\0'),function(k,v) {$('#'+tag+k).html(v);});
+  });
+  $.post('<?=$url?>',{cmd:'array',path:'<?=$path?>',hot:'<?=$display['hot']?>',max:'<?=$display['max']?>',unit:'<?=$display['unit']?>',text:<?=$display['text']?>,critical:'<?=$display['critical']?>',warning:'<?=$display['warning']?>'},function(d) {
+    var data = d.split('\0');
+    var info = moreInfo(data,'Array');
+    $('#array_list').html(data[0]);
+    $('#array_info').parent().css('display',info?'':'none');
+    $('#array_info').html(info);
+    smartMenu('#array_list');
+    $.post('<?=$url?>',{cmd:'cache',path:'<?=$path?>',hot:'<?=$display['hot']?>',max:'<?=$display['max']?>',unit:'<?=$display['unit']?>',text:<?=$display['text']?>,critical:'<?=$display['critical']?>',warning:'<?=$display['warning']?>'},function(d) {
+      var data = d.split('\0');
+      var info = moreInfo(data,'Cache');
+      $('#cache_list').html(data[0]);
+      $('#cache_info').parent().css('display',info?'':'none');
+      $('#cache_info').html(info);
+      smartMenu('#cache_list');
+<?if ($devs):?>
+      $.post('<?=$url?>',{cmd:'extra',path:'<?=$path?>',hot:'<?=$display['hot']?>',max:'<?=$display['max']?>',unit:'<?=$display['unit']?>',text:<?=$display['text']?>,critical:'<?=$display['critical']?>',warning:'<?=$display['warning']?>'},function(d) {
+        var data = d.split('\0');
+        var info = moreInfo(data,'Unassigned');
+        $('#extra_list').html(data[0]);
+        $('#extra_info').parent().css('display',info?'':'none');
+        $('#extra_info').html(info);
+        smartMenu('#extra_list');
+      });
+<?endif;?>
+    });
+    timer30 = setTimeout(update30,30000);
+  });
+}
+function update60() {
+  $.post('<?=$url?>',{cmd:'sys'},function(data) {
+    $.each(data.split('\0'),function(k,v) {
+      var load = v.slice(0,-1);
+      if (load >= <?=$display['critical']?>) var color = 'redbar';
+      else if (load >= <?=$display['warning']?>) var color = 'orangebar';
+      else var color = '';
+      $('.sys'+k).text(v);
+      $('#sys'+k).finish().animate({width:v},{step:function(){$('#sys'+k).css('overflow','visible').removeClass().addClass(color);}});
+    });
+    setTimeout(update60,60000);
+  });
+}
+function attributes(page,disk) {
+  var tab = page=='New' ? 'tab2' : 'tab3';
+  $.cookie('one',tab,{path:'/'});
+  location.replace('/Dashboard/'+page+'?name='+disk);
+}
+function capabilities(page,disk) {
+  var tab = page=='New' ? 'tab3' : 'tab4';
+  $.cookie('one',tab,{path:'/'});
+  location.replace('/Dashboard/'+page+'?name='+disk);
+}
+function identity(page,disk) {
+  var tab = page=='New' ? 'tab4' : 'tab5';
+  $.cookie('one',tab,{path:'/'});
+  location.replace('/Dashboard/'+page+'?name='+disk);
+}
+function acknowledge(disk) {
+  $.post('/webGui/include/Acknowledge.php',{disk:disk},function(){clearTimeout(timer30);update30();});
+}
+function dropdown(menu) {
+  var select = 'select[name="'+menu+'"]';
+  var size   = $(select+' option').length;
+  var option = $.cookie(menu)||0;
+  if (option >= size) option = size - 1;
+  $(select+' option')[option].selected = true;
+  $(select).change();
+}
+function toggleChevron(field,action) {
+  switch (action) {
+    case 0:
+    case 1: var view = field; break;
+    case 2: var view = $.cookie('enter_view')||0; view++; view = 'view'+view; break;
+    case 3: var view = $.cookie('enter_share')||0; view++; view = 'user'+view; break;
+    case 4: var view = $.cookie('enter_share')||0; view++; view = 'share'+view; break;
+  }
+  toggleView(field,false,view);
+  var visible = $('.'+view).is(':visible');
+  var chevron = visible ? 'fa-chevron-up' : 'fa-chevron-down';
+  var remove  = visible ? 'fa-chevron-down' : 'fa-chevron-up';
+  $('i#'+field).removeClass(remove).addClass(chevron);
+  if (action==1) {
+    if (visible) toggleCPU(true); else $('.cpu_open').hide();
+  } else if (action==2) {
+    $('.'+field).toggle();
+  }
+}
+function toggleCPU(init) {
+  if (!init) {if ($.cookie('cpu')===undefined) $.cookie('cpu','close',{expires:3650}); else $.removeCookie('cpu');}
+  if ($.cookie('cpu_view')===undefined) {
+    if ($.cookie('cpu')===undefined) {
+      $('.cpu_open').show();
+      $('.cpu_close').text('隐藏详细信息');
+      $('.cpu_view').find('td').css('padding-bottom','0');
+    } else {
+      $('.cpu_open').hide();
+      $('.cpu_close').text('显示详细信息');
+      $('.cpu_view').find('td').css('padding-bottom','20px');
+    }
+  } else {
+    $('.cpu_open').hide();
+  }
+}
+function toggleView(field,init,view) {
+  if (!view) view = $.cookie(field)||field;
+  if (!init) {if ($.cookie(field)===undefined) $.cookie(field,view,{expires:3650}); else $.removeCookie(field);}
+  var visible = $.cookie(field)===undefined;
+  if (visible) $('.'+view).show().removeClass('flat'); else $('.'+view).hide().addClass('flat');
+  var unset = true;
+  switch (field) {
+  case 'users_view':
+    visible = $('.user').is(':visible');
+    unset = false;
+  case 'shares_view':
+    if (unset) visible = $('.share').is(':visible');
+  case 'array_view':
+  case 'cache_view':
+  case 'extra_view':
+    var on = $('#'+field+'_on');
+    var off = $('#'+field+'_off');
+    if (visible) {on.show(); off.hide();} else {off.show(); on.hide();}
+    break;
+  case 'docker_view':
+    if (visible) $('span.info.apps').show(); else $('span.info.apps').hide();
+    if (init) setTimeout(noApps,200); else noApps();
+    break;
+  case 'vm_view':
+    if (visible) $('span.info.vms').show(); else $('span.info.vms').hide();
+    if (init) setTimeout(noVMs,200); else noVMs();
+    break;
+  }
+  if (init) {
+    var chevron = visible ? 'fa-chevron-up' : 'fa-chevron-down';
+    $('#'+field).addClass(chevron);
+  }
+}
+function StopArray() {
+<?if ($confirm['stop']):?>
+  swal({title:'继续?',text:'执行该操作将会停止阵列',type:'warning',showCancelButton:true},function(){StopArrayNow();});
+<?else:?>
+   StopArrayNow();
+<?endif;?>
+}
+function StopArrayNow() {
+  $('span.hand').prop('onclick',null).off('click').addClass('busy').css('cursor','default');
+  $.post('/update.htm',{startState:'<?=$var['mdState']?>',cmdStop:'Stop',csrf_token:'<?=$var['csrf_token']?>'},function(){refresh();});
+}
+function StartArray() {
+<?if ($confirm['stop']):?>
+  swal({title:'继续?',text:'执行该操作将会启动阵列',type:'warning',showCancelButton:true},function(){StartArrayNow();});
+<?else:?>
+  StartArrayNow();
+<?endif;?>
+}
+function StartArrayNow() {
+  $('span.hand').prop('onclick',null).off('click').addClass('busy').css('cursor','default');
+  $.post('/update.htm',{startState:'<?=$var['mdState']?>',cmdStart:'Start',csrf_token:'<?=$var['csrf_token']?>'},function(){refresh();});
+}
+function Reboot() {
+<?if ($confirm['down']):?>
+  swal({title:'继续?',text:'执行该操作将会重新启动系统',type:'warning',showCancelButton:true},function(){RebootNow();});
+<?else:?>
+  RebootNow();
+<?endif;?>
+}
+function RebootNow() {
+  document.boot.cmd.value = 'reboot';
+  document.boot.submit();
+}
+function Shutdown() {
+<?if ($confirm['down']):?>
+  swal({title:'继续?',text:'执行该操作将会关闭系统',type:'warning',showCancelButton:true},function(){ShutdownNow();});
+<?else:?>
+  ShutdownNow();
+<?endif;?>
+}
+function ShutdownNow() {
+  document.boot.cmd.value = 'shutdown';
+  document.boot.submit();
+}
+
+<?if ($sleep):?>
+function Sleep() {
+<?if ($confirm['sleep']):?>
+  swal({title:'继续?',text:'执行该操作将会使系统进入休眠状态',type:'warning',showCancelButton:true},function(){SleepNow();});
+<?else:?>
+  SleepNow();
+<?endif;?>
+}
+function SleepNow() {
+  $('#statusraid').append('&nbsp;&bullet;&nbsp;<span class="warning" style="font-weight:bold">系统进入休眠模式</span>');
+  $.get('/plugins/dynamix.s3.sleep/include/SleepMode.php',function(){refresh();});
+}
+<?endif;?>
+
+function sortTable(table,index) {
+  if (!index) return;
+  index = index.split(';');
+  for (var i=0,n; n=index[i]; i++) {
+    table.find('thead[sort="'+n+'"]').appendTo(table);
+    table.find('tbody[sort="'+n+'"]').appendTo(table);
+  }
+}
+
+var cpuload = new NchanSubscriber('/sub/cpuload');
+cpuload.on('message',function(data) {
+/*
+message should be something like: {"cpuload": {"cpu":[0,0],"cpu0":[0,0],"cpu1":[0,0],"cpu2":[0,0],"cpu3":[0,0]}}
+The array values are [<load-percentage>,<guest-percentage>].  guest-percentage is that part of load-percentage that is being consumed by VM guests
+var json = $.parseJSON(message);
+$.each(json["cpuload"],function(k,v) {
+  $('#'+k).animate({width:v[0]+'%'},{step:function(){$('#'+k).css('overflow','visible');}}).text(v[0]+'%');
+});
+*/
+//data is the cpuload.ini file contents
+  var ini = parseINI(data);
+  $.each(ini,function(k,v) {
+    var load = v['host'];
+    if (load >= red) var color = 'redbar';
+    else if (load >= orange) var color = 'orangebar';
+    else var color = '';
+    load += '%';
+    $('.'+k).text(load);
+    $('#'+k).finish().animate({width:load},{step:function(){$('#'+k).css('overflow','visible').removeClass().addClass(color);}});
+  });
+});
+var sortableHelper = function(e,ui){
+  var width = [];
+  var table = ui.parent();
+  ui.find('tr:first').children().each(function(){width.push($(this).width());});
+  if (ui.prop('nodeName').toLowerCase()=='tbody') {
+    var sort = ui.attr('sort');
+    var head = table.find('thead[sort="'+sort+'"]');
+    if (head.find('tr:first').is(':visible')) ui = head.clone();
+  }
+  ui.find('tr:first').children().each(function(i){$(this).width(width[i]);});
+  return ui;
+};
+$(function() {
+  $('table').sortable({helper:sortableHelper,items:'.sortable',cursor:'move',axis:'y',containment:'parent',delay:100,opacity:0.5,zIndex:9999,
+  update:function(e,ui){
+    var table = ui.item.parent();
+    var index = [], prev = -1;
+    if (ui.item.prop('nodeName').toLowerCase()=='tbody') {
+      table.find('tbody').each(function(){
+        var sort = $(this).attr('sort');
+        var head = table.find('thead[sort="'+sort+'"]');
+        if (sort != prev) {
+          head.remove().insertBefore($(this));
+          index.push(sort);
+          prev = sort;
+        } else {
+          $(this).remove().insertAfter(head);
+        }
+      });
+    } else {
+      table.find('thead').each(function(){
+        var sort = $(this).attr('sort');
+        var body = table.find('tbody[sort="'+sort+'"]');
+        body.remove().insertAfter($(this));
+        index.push(sort);
+      });
+    }
+    var sorted = true;
+    for (var x = 0; x < index.length-1; x++) {
+      if (index[x+1]-index[x]!=1) {sorted=false; break;}
+    }
+    sorted ? $.removeCookie(table.prop('id')) : $.cookie(table.prop('id'),index.join(';'),{expires:3650});
+  }});
+<?if ($group):?>
+  dropdown('enter_share');
+<?endif;?>
+  dropdown('enter_view');
+<?if ($wireguard):?>
+  update1();
+<?endif;?>
+  update5();
+  update15();
+  update60();
+  toggleCPU(true);
+  toggleView('sys_view',true);
+  toggleView('mb_view',true);
+  toggleView('cpu_view',true);
+  toggleView('mem_view',true);
+  toggleView('port_view',true);
+<?if ($wireguard):?>
+  toggleView('vpn_view',true);
+<?endif;?>
+<?if ($fans):?>
+  toggleView('fan_view',true);
+<?endif;?>
+<?if ($apcupsd):?>
+  toggleView('ups_view',true);
+<?endif;?>
+<?if ($dockerd && ($display['dashapps']=='icons' || $display['dashapps']=='docker')):?>
+  toggleView('docker_view',true);
+<?endif;?>
+<?if ($libvirtd && ($display['dashapps']=='icons' || $display['dashapps']=='vms')):?>
+  toggleView('vm_view',true);
+<?endif;?>
+  toggleView('parity_view',true);
+  toggleView('array_view',true);
+<?if ($cache_pool):?>
+  toggleView('cache_view',true);
+<?endif;?>
+<?if ($devs):?>
+  toggleView('extra_view',true);
+<?endif;?>
+  toggleView('users_view',true);
+  toggleView('shares_view',true);
+  portMenu();
+  loadlist(true);
+  cpuload.start();
+  sortTable($('#db-box1'),$.cookie('db-box1'));
+  sortTable($('#db-box2'),$.cookie('db-box2'));
+  sortTable($('#db-box3'),$.cookie('db-box3'));
+});
+</script>

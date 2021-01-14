@@ -1,0 +1,936 @@
+Menu="OtherSettings"
+Title="Docker"
+Icon="icon-docker"
+Tag="icon-docker"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2014-2019, Guilherme Jardim, Eric Schultz, Jon Panozzo.
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+// Add the Docker JSON client
+require_once "$docroot/plugins/dynamix.docker.manager/include/DockerClient.php";
+
+$DockerClient  = new DockerClient();
+$DockerStopped = pgrep('dockerd')===false;
+
+// Check for nodatacow flag on Docker file; display warning
+$realfile = $dockercfg['DOCKER_IMAGE_FILE'];
+if (file_exists($realfile)) {
+  $realfile = transpose_user_path($realfile);
+  if (exec("stat -c %T -f " . escapeshellarg($realfile)) == "btrfs") {
+    if (shell_exec("lsattr " . escapeshellarg($realfile) . " | grep \"\\-C\"") == "") {
+      echo '<p class="notice">由于 Unraid 6 早期的 Beta 版存在问题, 因此需要重新创建您现有的 Docker 镜像文件. 否则可能会导致您的 Docker 镜像在以后遭受损坏. 请立即执行! </p>';
+    }
+  }
+}
+unset($custom,$other);
+exec("ls --indicator-style=none /sys/class/net|grep -P '^br[0-9]'",$custom);
+exec("ls --indicator-style=none /sys/class/net|grep -P '^(bond|eth)[0-9]'",$other);
+$slaves = [];
+foreach ($other as $network) {
+  if (substr($network,0,4)=='bond') {
+    $br = str_replace('bond','br',$network);
+    $bond = "/sys/class/net/$network/bonding/slaves";
+    if (file_exists($bond)) $slaves = array_merge($slaves,explode(' ',str_replace("\n","",file_get_contents($bond))));
+    if (!in_array($br,$custom)) $custom[] = $network;
+  } else {
+    $br = str_replace('eth','br',$network);
+    $bond = str_replace('eth','bond',$network);
+    if (!in_array($br,$custom) && !in_array($bond,$custom)) $custom[] = $network;
+  }
+}
+$include = $include6 = $address = $address6 = $gateway = $gateway6 = $unset = $protocol = [];
+foreach ($custom as $network) {
+  if (in_array($network,$slaves)) continue;
+  $ip4 = exec("ip -4 addr show $network|awk '/inet /{print $2}'");
+  $ip6 = exec("ip -6 addr show $network noprefixroute|awk '/inet6 /{print $2}'");
+  $ip6 = $ip6 ?: exec("ip -6 addr show $network scope global permanent|awk '/inet6 /{print $2}'");
+  $gw4 = exec("ip -4 route show dev $network default|awk '{print $3}'");
+  $gw6 = exec("ip -6 route show dev $network default|awk '{print $3}'");
+  $route4 = exec("ip -4 route show dev $network $ip4|awk '{print $1}'");
+  $route6 = exec("ip -6 route show dev $network $ip6|awk '{print $1}'");
+  list($eth,$vlan) = explode('.',$network);
+  $eth = str_replace(['bond','br'],'eth',$eth);
+  if (!$vlan) {
+    $protocol[$network] = $$eth['PROTOCOL:0'] ?? 'ipv4';
+  } else {
+    foreach ($$eth as $key => $value) if (strpos($key,'VLANID')!==false && $value==$vlan) {$protocol[$network] = $$eth[str_replace('VLANID','PROTOCOL',$key)] ?? 'ipv4'; break;}
+  }
+  if ($ip4 && $route4) {
+    $include[$network] = $route4;
+    $address[$network] = $ip4;
+    $gateway[$network] = $gw4;
+  } elseif (!array_key_exists($network,$gateway6)) {
+    $unset[] = $network;
+  }
+  if ($ip6 && $route6) {
+    $include6[$network] = $route6;
+    $address6[$network] = $ip6;
+    $gateway6[$network] = $gw6;
+  } elseif (!array_key_exists($network,$gateway)) {
+    $unset[] = $network;
+  }
+  if ($protocol[$network] != 'ipv4') $wide = true;
+}
+$ip4class = $wide ? 'ip6' : 'ip4';
+$gw4class = $wide ? 'gw6' : 'gw4';
+
+$unset = array_unique($unset);
+
+function normalize($network) {
+  return strtoupper(str_replace('.','_',$network));
+}
+function base_min($route) {
+  list($net,$mask) = explode('/',$route);
+  $mask = 32-$mask;
+  return explode('.',long2ip((ip2long($net)>>$mask)<<$mask));
+}
+function base_max($route) {
+  list($net,$mask) = explode('/',$route);
+  $mask = 32-$mask;
+  return explode('.',long2ip(((ip2long($net)>>$mask)<<$mask)+pow(2,$mask)-1));
+}
+function base_net($route) {
+  return substr(explode('/',$route)[0],0,-2);
+}
+$bgcolor = strstr('white,azure',$display['theme']) ? '#f2f2f2' : '#1c1c1c';
+?>
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.filetree.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<style>
+.errortext{color:#EF3D47;display:none}
+.fileTree{background:<?=$bgcolor?>;width:300px;max-height:150px;overflow-y:scroll;overflow-x:hidden;position:absolute;z-index:100;display:none}
+.basic{display:block}
+.advanced{display:none}
+select.mask{min-width:0;margin:0 10px 0 4px}
+select.net{min-width:0;margin:0 4px 0 2px}
+select option.hide{display:none}
+input.ip4{width:100px;margin:0 4px 0 1px}
+input.ip6{width:140px;margin:0 4px}
+input.gw4{width:100px;margin:0 4px 0 1px}
+input.gw6{width:160px;margin:0 4px}
+input.pool6{width:40px;margin:0 4px 0 1px}
+span.net{margin-left:4px;margin-right:2px}
+span.ip4{display:inline-block;width:260px}
+span.ip6{display:inline-block;width:310px}
+span.gw4{display:inline-block;width:200px}
+span.gw6{display:inline-block;width:270px}
+<?if (strstr('white,azure',$display['theme'])):?>
+span.disabled{color:#B0B0B0}
+<?else:?>
+span.disabled{color:#404040}
+<?endif;?>
+</style>
+<span class="status vhshift"><input type="checkbox" class="advancedview"></span>
+
+<form markdown="1" id="settingsForm" name="settingsForm" method="POST" action="/update.php" target="progressFrame" onsubmit="return prepareDocker(this)">
+<input type="hidden" name="#file" value="<?=$docker_cfgfile?>">
+<input type="hidden" name="#include" value="/plugins/dynamix.docker.manager/include/PruneConfig.php">
+<input type="hidden" name="#command" value="/plugins/dynamix/scripts/emcmd">
+<input type="hidden" name="#arg[1]" value="cmdStatus=Apply">
+<input type="hidden" name="#cleanup" value="true">
+<input type="hidden" name="DOCKER_CUSTOM_NETWORKS" value="<?=implode(' ',$unset)?> ">
+启用 Docker:
+: <select id="DOCKER_ENABLED" name="DOCKER_ENABLED">
+  <?=mk_option($dockercfg['DOCKER_ENABLED'], 'no', '否')?>
+  <?=mk_option($dockercfg['DOCKER_ENABLED'], 'yes', '是')?>
+  </select>
+  <?if ($var['fsState'] != "Started"):?>
+  <span id="arraystopped"><i class="fa fa-warning icon warning"></i> <?=($dockercfg['DOCKER_ENABLED']=='yes')?'阵列启动后, Docker 将可用':'启动阵列后, 才能启动 Docker'?></span>
+  <?elseif (!is_dir(dirname($dockercfg['DOCKER_IMAGE_FILE'])) || !is_dir($dockercfg['DOCKER_APP_CONFIG_PATH'])):?>
+  <span class="basic" style="display:inline"><i class="fa fa-warning icon warning"></i> 一个或多个路径不存在 (<a href="#" onclick="$('.advancedview').switchButton('option','checked',true); return false">查看</a>)</span>
+  <?endif;?>
+
+> 在您首次启动 Docker 服务之前, 请指定要安装的 Docker 镜像文件.
+>
+> 一旦启动, Docker 将在阵列启动后始终自动启动.
+
+<?if ($DockerStopped):?>
+
+Docker 虚拟磁盘大小:
+: <input id="DOCKER_IMAGE_SIZE" type="number" name="DOCKER_IMAGE_SIZE" value="<?=$dockercfg['DOCKER_IMAGE_SIZE']?>" class="narrow" required>GB <span id="SIZE_ERROR" class="errortext"></span>
+
+> 如果系统需要创建新的 Docker 镜像文件, 则需要使用的默认大小 (以 GB 为单位).
+>
+> 要调整现有镜像文件的大小, 请在此处指定新大小. 下次启动 Docker 服务时, 文件 (和文件系统) 将增加到新的大小 (但不会减少).
+
+Docker 虚拟磁盘位置:
+: <input id="DOCKER_IMAGE_FILE" type="text" name="DOCKER_IMAGE_FILE" value="<?=$dockercfg['DOCKER_IMAGE_FILE']?>" placeholder="例如 /mnt/disk1/docker.img" data-pickcloseonfile="true" data-pickfilter="img" data-pickroot="/mnt/" data-pickfolders="true" required="required" pattern="^[^\\]*\.(img|IMG)$">
+  <?if (file_exists($dockercfg['DOCKER_IMAGE_FILE'])):?>
+  <span id="deletePanel"><label><input type="checkbox" id="deleteCheckbox"> 删除镜像文件</label></span>
+  <?endif;?>
+  <?if ($var['fsState'] != "Started"):?>
+  <span><i class="fa fa-warning icon warning"></i> 谨慎修改: 在启动阵列之前无法验证路径</span>
+  <?elseif (!is_dir(dirname($dockercfg['DOCKER_IMAGE_FILE']))):?>
+  <span><i class="fa fa-warning icon warning"></i> 路径不存在</span>
+  <?endif;?><span id="IMAGE_ERROR" class="errortext"></span>
+
+> 您必须为 Docker 指定镜像文件. 首次启动 Docker 服务时, 系统将自动创建此文件.
+>
+> 建议在阵列外部 (例如在缓存池上) 创建此映像文件. 为了获得最佳性能, 首选 SSD 设备.
+
+默认存储位置:
+: <input id="DOCKER_APP_CONFIG_PATH" type="text" name="DOCKER_APP_CONFIG_PATH" value="<?=$dockercfg['DOCKER_APP_CONFIG_PATH']?>" placeholder="例如 /mnt/user/appdata" data-pickfilter="HIDE_FILES_FILTER" data-pickroot="<?=(is_dir('/mnt/user/') ? '/mnt/user/' : '/mnt/')?>" data-pickfolders="true" pattern="^[^\\]*/$">
+  <?if ($var['fsState'] != "Started"):?>
+  <span><i class="fa fa-warning icon warning"></i>谨慎修改: 在启动阵列之前无法验证路径</span>
+  <?elseif (!is_dir($dockercfg['DOCKER_APP_CONFIG_PATH'])):?>
+  <span><i class="fa fa-warning icon warning"></i> 路径不存在</span>
+  <?endif;?>
+
+> 您可以指定一个文件夹, 以自动生成和存储包含每个 Docker 应用程序配置文件的子文件夹 (通过 /config 映射卷).
+>
+> 建议在阵列外部 (例如在缓存池上) 创建此映像文件. 为了获得最佳性能, 首选 SSD 设备.
+>
+> 仅在添加新的 Docker 应用程序时使用. 编辑现有的 Docker 应用程序将不受此设置的影响.
+
+<div markdown="1" class="advanced">
+Docker 日志轮换:
+: <select name="DOCKER_LOG_ROTATION" onchange="showLogOptions(this.value)">
+  <?=mk_option($dockercfg['DOCKER_LOG_ROTATION'], 'no', '禁用')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_ROTATION'], 'yes', '启用')?>
+  </select>
+
+> 默认情况下, 禁用日志循环, 它将创建一个大小不受限制的日志文件.
+>
+> 启用日志轮换以限制日志文件的大小, 并指定要保留在轮换方案中的文件数.
+
+<div markdown="1" id="DOCKER_LOG_OPTIONS" style="display:none">
+Docker 日志文件最大尺寸:
+: <select name="DOCKER_LOG_SIZE">
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '10m', '10 MB')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '20m', '20 MB')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '50m', '50 MB')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '100m', '100 MB')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '500m', '500 MB')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_SIZE'], '1g', '1000 MB')?>
+  </select>
+
+> 指定最大日志大小. 当超过此值时, 将发生日志轮换。
+
+Docker 日志文件数量:
+: <select name="DOCKER_LOG_FILES">
+  <?=mk_option($dockercfg['DOCKER_LOG_FILES'], '1', '1')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_FILES'], '2', '2')?>
+  <?=mk_option($dockercfg['DOCKER_LOG_FILES'], '3', '3')?>
+  </select>
+
+> 指定完成日志轮换后的日志文件数.
+
+</div>
+模板创作模式:
+: <select id="DOCKER_AUTHORING_MODE" name="DOCKER_AUTHORING_MODE">
+  <?=mk_option($dockercfg['DOCKER_AUTHORING_MODE'], 'no', '否')?>
+  <?=mk_option($dockercfg['DOCKER_AUTHORING_MODE'], 'yes', '是')?>
+  </select>
+
+> 如果设置为 **是**, 则在创建/编辑容器时, 该界面将显示一些与模板创作相关的额外字段.
+
+主机访问自定义网络:
+: <select name="DOCKER_ALLOW_ACCESS">
+  <?=mk_option($dockercfg['DOCKER_ALLOW_ACCESS'], '', '禁用')?>
+  <?=mk_option($dockercfg['DOCKER_ALLOW_ACCESS'], 'yes', '启用')?>
+  </select>
+
+> 允许使用自定义 (macvlan) 网络在主机和容器之间进行直接通信. <br>
+> 默认情况下, 这是禁止的.
+
+保留用户定义的网络:
+: <select name="DOCKER_USER_NETWORKS">
+  <?=mk_option($dockercfg['DOCKER_USER_NETWORKS'], 'remove', '否')?>
+  <?=mk_option($dockercfg['DOCKER_USER_NETWORKS'], 'preserve', '是')?>
+  </select>
+
+> 用户创建的网络是用户在 GUI 外部创建的网络. <br>
+> 默认情况下, 用户创建的网络将从 Docker 中删除. 这样做是为了防止与自定义网络自动生成潜在的冲突.
+>
+> 更改此设置以保留用户定义的网络, 但是用户有责任确保这些条目正确运行并且没有冲突.
+
+<?foreach ($include as $network => $route):?>
+<?
+$net = normalize($network);
+$docker_auto = "DOCKER_AUTO_$net";
+$docker_dhcp = "DOCKER_DHCP_$net";
+?>
+
+<input type="hidden" name="<?=$docker_auto?>" value="<?=$dockercfg[$docker_auto]?>">
+
+IPv4 custom network on interface <?=$network?> (optional):
+<?
+  $auto = $dockercfg[$docker_auto]!='no';
+  $autoDisabled = $auto ? '':'disabled';
+  $dhcp = $dockercfg[$docker_dhcp] ?? false;
+  $dhcpDisabled = ($auto && $dhcp) ? '':'disabled';
+  $net = base_min($route);
+  $max = base_max($route);
+  $mask = explode('/',$route)[1];
+  $net_user = $dhcp ? base_min($dhcp) : $net;
+  $mask_user = $dhcp ? explode('/',$dhcp)[1] : $mask+1;
+  $size = pow(2,32-$mask_user);
+  switch (true) {
+    case ($mask < 16): $prefix = $net[0]; $box = 1; break;
+    case ($mask < 24): $prefix = $net[0].'.'.$net[1]; $box = 2; break;
+    case ($mask < 32): $prefix = $net[0].'.'.$net[1].'.'.$net[2]; $box = 3 ;break;
+  }
+?>
+: <input type="checkbox" id="<?=$docker_dhcp?>_edit" onchange="changeEdit(this.id,4)"<?=$auto?'checked':''?>>
+  <span id="<?=$docker_dhcp?>_line" class="<?=$autoDisabled?>">
+  <span class="<?=$ip4class?>">**子网:** <?=$route?></span>
+  <span class="<?=$gw4class?>">**网关:** <?=$gateway[$network]?></span>
+  <input type="checkbox" id="<?=$docker_dhcp?>_dhcp" onchange="changeDHCP(this.id,4)"<?=$dhcp?'checked':''?><?=$autoDisabled?>>
+  **DHCP pool:**<span id="<?=$docker_dhcp?>_net" class="net <?=$dhcpDisabled?>"><?=$prefix?>.</span>
+  </span>
+<?
+  for ($b=$box; $b<=3; $b++) {
+    switch ($b) {
+      case 1: $step = $size/65536%256; break;
+      case 2: $step = $size/256%256; break;
+      case 3: $step = $size%256; break;
+    }
+    if ($step===0) $step = 256;
+    echo "<select id=\"{$docker_dhcp}_{$b}\" class=\"net\" $dhcpDisabled>";
+    for ($n=$net[$b]; $n<=$max[$b]; $n++) echo mk_option($net_user[$b],$n,$n,$n%$step==0?'':'class="hide"');
+    echo "</select>";
+  }
+  echo "/ ";
+  echo "<select id=\"{$docker_dhcp}_mask\" class=\"mask\" onchange=\"changeMask(this.id,this.value)\" $dhcpDisabled>";
+  for ($m=$mask+1; $m<=30; $m++) echo mk_option($mask_user,$m,$m);
+  echo "</select><span id=\"{$docker_dhcp}_size\" style=\"".($dhcp?'':'display:none')."\">($size hosts)</span>";
+  echo "<input type=\"hidden\" name=\"$docker_dhcp\" value=\"\">";
+?>
+
+<?endforeach;?>
+<?if ($include):?>
+> 包含 (默认) 或将以上接口或 VLAN 排除为 Docker 的自定义网络.
+>
+> 输入每个分配的子网中的池范围, 该范围用于 Docker 的 DHCPv4 分配. 例如 192.168.1.128/25
+
+<?endif;?>
+<?foreach ($unset as $network):?>
+<?
+$port = normalize($network);
+list($subnet,$mask) = explode('/',$dockercfg["DOCKER_SUBNET_$port"]);
+list($range,$size) = explode('/',$dockercfg["DOCKER_RANGE_$port"]);
+$disabled = $subnet ? '':'disabled';
+$dhcpDisabled = $range ? '':'disabled';
+?>
+<?if ($protocol[$network] != 'ipv6'):?>
+
+为接口上的 IPv4 自定义网络 <?=$network?> (可选):
+: <input type="checkbox" id="DOCKER_CUSTOM_<?=$port?>_edit" onchange="changeCustom(this.id,4)"<?=$subnet?'checked':''?>><span id="DOCKER_CUSTOM_<?=$port?>_line" class="<?=$subnet?'':'disabled'?>">
+  <span class="<?=$ip4class?>">**子网:** <input type="text" id="DOCKER_CUSTOM_<?=$port?>_net" name="DOCKER_SUBNET_<?=$port?>" class="ip4" value="<?=$subnet?>" title="IPv4 地址 A.B.C.D"<?=$disabled?>>/
+  <select id="DOCKER_CUSTOM_<?=$port?>_mask" name="DOCKER_MASK_<?=$port?>" class="mask"<?=$disabled?>>
+  <?for ($m=16; $m<=30; $m++) echo mk_option($mask?:24,$m,$m)?></select>
+  </span>
+  <span class="<?=$gw4class?>">**网关:** <input type="text" id="DOCKER_CUSTOM_<?=$port?>_gw" name="DOCKER_GATEWAY_<?=$port?>" class="ip4" value="<?=$dockercfg["DOCKER_GATEWAY_$port"]?>" title="IPv4 地址 A.B.C.D"<?=$disabled?>></span>
+  <input type="checkbox" id="DOCKER_CUSTOM_<?=$port?>_dhcp" onchange="customDHCP(this.id,4)"<?=$subnet?'checked':''?><?=$dhcpDisabled?>>
+  **DHCP pool:** <input type="text" id="DOCKER_CUSTOM_<?=$port?>_pool" name="DOCKER_RANGE_<?=$port?>" class="ip4" value="<?=$range?>" title="IPv4 地址 A.B.C.D"<?=$disabled?>>/
+  <select id="DOCKER_CUSTOM_<?=$port?>_size" name="DOCKER_SIZE_<?=$port?>" class="mask" onchange="changeHosts(this.id,this.value)"<?=$disabled?>>
+  <?for ($m=16; $m<=30; $m++) echo mk_option($size?:25,$m,$m)?></select>
+  <span id="DOCKER_CUSTOM_<?=$port?>_hosts" style="<?=$subnet?'':'display:none'?>">(<?=pow(2,32-($size?:25))?> 主机)</span></span>
+
+<?endif;?>
+<?endforeach;?>
+<?if ($unset && $protocol[$network] != 'ipv6'):?>
+> 包含或排除 (默认) 上述接口或 VLAN 作为 Docker 的自定义网络.
+>
+> 输入每个分配的子网中的池范围, 该范围用于 Docker 的 DHCPv4 分配. 例如 192.168.1.128/25
+
+<?endif;?>
+<?if ($include6):?>
+<hr>
+<?endif;?>
+<?foreach ($include6 as $network => $route):?>
+<?
+$net = normalize($network);
+$docker_auto = "DOCKER_AUTO_$net";
+$docker_dhcp6 = "DOCKER_DHCP6_$net";
+?>
+
+IPv6 custom network on interface <?=$network?> (optional):
+<?
+  $auto6 = $dockercfg[$docker_auto]!='no';
+  $auto6Disabled = $auto6 ? '':'disabled';
+  $dhcp6 = $dockercfg[$docker_dhcp6] ?? false;
+  $dhcp6Disabled = ($auto6 && $dhcp6) ? '':'disabled';
+  $net = base_net($route);
+  $mask = explode('/',$route)[1];
+  $net_user = $dhcp6 ? str_replace("$net:","",base_net($dhcp6)) : '';
+  $mask_user = $dhcp6 ? explode('/',$dhcp6)[1] : $mask;
+?>
+: <input type="checkbox" id="<?=$docker_dhcp6?>_edit" onchange="changeEdit(this.id,6)"<?=$auto6?'checked':''?>>
+  <span id="<?=$docker_dhcp6?>_line" class="<?=$auto6Disabled?>">
+  <span class="ip6">**子网:** <?=$route?></span>
+  <span class="gw6">**网关:** <?=$gateway6[$network]?></span>
+  <input type="checkbox" id="<?=$docker_dhcp6?>_dhcp" onchange="changeDHCP(this.id,6)"<?=$dhcp6?'checked':''?><?=$auto6Disabled?>>
+  **DHCP pool:**<span id="<?=$docker_dhcp6?>_net" class="net <?=$dhcp6Disabled?>"><?=$net?>:</span>
+<?
+  echo "<input type=\"text\" id=\"{$docker_dhcp6}_text\" value=\"$net_user\" class=\"pool6\" $dhcp6Disabled>/ ";
+  echo "<select id=\"{$docker_dhcp6}_mask\" class=\"mask\" $dhcp6Disabled>";
+  for ($m=$mask+8; $m<=120; $m+=8) echo mk_option($mask_user,$m,$m);
+  echo "</select><input type=\"hidden\" name=\"$docker_dhcp6\" value=\"\"></span>";
+?>
+
+<?endforeach;?>
+<?if ($include6):?>
+> 包含 (默认) 或将以上接口或 VLAN 排除为 Docker 的自定义网络.
+>
+> 输入每个分配的子网中的池范围, 该范围用于 Docker 的 DHCPv6 分配. 例如2a02：abcd：9ef5：100：1 :: // 72
+
+<?endif;?>
+<?foreach ($unset as $network):?>
+<?
+$port = normalize($network);
+list($subnet6,$mask6) = explode('/',$dockercfg["DOCKER_SUBNET6_$port"]);
+list($range6,$size6) = explode('/',$dockercfg["DOCKER_RANGE6_$port"]);
+$disabled = $subnet6 ? '':'disabled';
+$dhcpDisabled = $range6 ? '':'disabled';
+?>
+<?if ($protocol[$network] != 'ipv4'):?>
+
+为接口上的 IPv6 自定义网络 <?=$network?> (可选):
+: <input type="checkbox" id="DOCKER_CUSTOM6_<?=$port?>_edit" onchange="changeCustom(this.id,6)"<?=$subnet6?'checked':''?>><span id="DOCKER_CUSTOM6_<?=$port?>_line" class="<?=$subnet6?'':'disabled'?>">
+  <span class="ip6">**子网:**<input type="text" id="DOCKER_CUSTOM6_<?=$port?>_net" name="DOCKER_SUBNET6_<?=$port?>" class="ip6" value="<?=$subnet6?>" title="IPv6 地址 nnnn:xxxx::yyyy"<?=$disabled?>>/
+  <select id="DOCKER_CUSTOM6_<?=$port?>_mask" name="DOCKER_MASK6_<?=$port?>" class="mask"<?=$disabled?>>
+  <?for ($m=64; $m<=120; $m+=8) echo mk_option($mask6?:64,$m,$m)?></select></span>
+  <span class="gw6">**网关:**<input type="text" id="DOCKER_CUSTOM6_<?=$port?>_gw" name="DOCKER_GATEWAY6_<?=$port?>" class="gw6" value="<?=$dockercfg["DOCKER_GATEWAY6_$port"]?>" title="IPv6 地址 nnnn:xxxx::yyyy"<?=$disabled?>></span>
+  <input type="checkbox" id="DOCKER_CUSTOM6_<?=$port?>_dhcp" onchange="customDHCP(this.id,6)"<?=$subnet6?'checked':''?><?=$dhcpDisabled?>>
+  **DHCP pool:**<input type="text" id="DOCKER_CUSTOM6_<?=$port?>_pool" name="DOCKER_RANGE6_<?=$port?>" class="ip6" value="<?=$range6?>" title="IPv6 地址 nnnn:xxxx::yyyy"<?=$disabled?>>/
+  <select id="DOCKER_CUSTOM6_<?=$port?>_size" name="DOCKER_SIZE6_<?=$port?>" class="mask"<?=$disabled?>>
+  <?for ($m=64; $m<=120; $m+=8) echo mk_option($size6?:72,$m,$m)?></select></span>
+
+<?endif;?>
+<?endforeach;?>
+<?if ($unset && $protocol[$network] != 'ipv4'):?>
+> 包含或排除 (默认) 上述接口或 VLAN 作为 Docker 的自定义网络.
+>
+> 输入每个分配的子网中的池范围, 该范围用于 Docker 的 DHCPv6 分配. 例如2a02：abcd：9ef5：100：1 :: // 72
+
+<?endif;?>
+</div>
+<?else: /* DOCKER STARTED */?>
+
+Docker 版本:
+: <?$arrInfo = $DockerClient->getInfo(); echo $arrInfo['Version']?>
+
+> 这是 Docker 版本.
+
+Docker 磁盘位置:
+: <?=$dockercfg['DOCKER_IMAGE_FILE']?>
+
+> 这是 Docker 镜像的位置.
+
+默认 appdata 存储位置:
+: <?=$dockercfg['DOCKER_APP_CONFIG_PATH']?>
+
+> 这是 Docker 容器的存储位置.
+
+<div markdown="1" class="advanced">
+Docker 日志轮换:
+: <?=$dockercfg['DOCKER_LOG_ROTATION']=='yes'?'启用':'禁用'?>
+
+> 默认情况下, 将创建一个无限的日志文件. 否则, 启用日志轮换后, 日志文件的大小和文件数将受到限制.
+
+主机访问自定义网络:
+: <?=$dockercfg['DOCKER_ALLOW_ACCESS']==''?'禁用':'启用'?>
+
+> 允许使用自定义 (macvlan) 网络在主机和容器之间进行直接通信. <br>
+> 默认情况下，这是禁止的.
+
+保留用户定义的网络:
+: <?=$dockercfg['DOCKER_USER_NETWORKS']=='preserve'?'是':'否'?>
+
+> 显示是在 GUI 外部创建的网络是为 Docker 删除还是保留. 保留后, 在容器的 '网络类型' 下拉列表中可以使用 '用户定义的网络'.
+
+<?foreach ($include as $network => $route):?>
+<?
+$net = normalize($network);
+$docker_dhcp = "DOCKER_DHCP_$net";
+?>
+<?if ($dockercfg[$docker_dhcp] || empty($dockercfg["DOCKER_AUTO_$net"])):?>
+为接口上的 IPv4 自定义网络 <?=$network?>:
+: <span class="<?=$gw4class?>">**子网:** <?=$route?></span>
+  <span class="<?=$gw4class?>">**网关:** <?=$gateway[$network]?></span>
+  **DHCP pool:** <?=$dockercfg[$docker_dhcp] ?? '未设置'?><?if ($dockercfg[$docker_dhcp]):?>&nbsp;&nbsp;(<?=pow(2,32-explode('/',$dockercfg[$docker_dhcp])[1])?> 主机)<?endif;?>
+
+<?endif;?>
+<?endforeach;?>
+<?foreach ($unset as $network):?>
+<?
+$port = normalize($network);
+list($eth,$vlan) = explode('.',$network);
+$eth = str_replace(['bond','br'],'eth',$eth);
+if (!$vlan) {
+  $protocol = $$eth['PROTOCOL:0'] ?? 'ipv4';
+} else {
+  foreach ($$eth as $key => $value) {
+    if (strpos($key,'VLANID')!==false && $value==$vlan) {$protocol = $$eth[str_replace('VLANID','PROTOCOL',$key)] ?? 'ipv4'; break;}
+  }
+}
+list($subnet,$mask) = explode('/',$dockercfg["DOCKER_SUBNET_$port"]);
+list($range,$size) = explode('/',$dockercfg["DOCKER_RANGE_$port"]);
+?>
+<?if ($protocol != 'ipv6' && $subnet):?>
+为接口上的 IPv4 自定义网络 <?=$network?>:
+: <span class="<?=$gw4class?>">**子网:** <?=$subnet?>/<?=$mask?></span>
+  <span class="<?=$gw4class?>">**网关:** <?=$dockercfg["DOCKER_GATEWAY_$port"]?></span>
+  **DHCP pool:** <?=$range?"$range/$size":"未设置"?><?if ($range):?>&nbsp;&nbsp;(<?=pow(2,32-($size?:25))?> 主机)<?endif;?>
+
+<?endif;?>
+<?endforeach;?>
+<?foreach ($include6 as $network => $route):?>
+<?
+$net = normalize($network);
+$docker_dhcp6 = "DOCKER_DHCP6_$net";
+if ($dockercfg[$docker_dhcp6] || empty($dockercfg["DOCKER_AUTO_$net"])):?>
+<?$wide = true;?>
+为接口上的 IPv6 自定义网络 <?=$network?>:
+: <span class="gw6">**子网:** <?=$route?></span>
+  <span class="gw6">**网关:** <?=$gateway6[$network]?></span>
+  **DHCP pool:** <?=$dockercfg[$docker_dhcp6] ?? '未设置'?>
+
+<?endif;?>
+<?endforeach;?>
+<?foreach ($unset as $network):?>
+<?
+$port = normalize($network);
+list($eth,$vlan) = explode('.',$network);
+$eth = str_replace(['bond','br'],'eth',$eth);
+if (!$vlan) {
+  $protocol = $$eth['PROTOCOL:0'] ?? 'ipv4';
+} else {
+  foreach ($$eth as $key => $value) {
+    if (strpos($key,'VLANID')!==false && $value==$vlan) {$protocol = $$eth[str_replace('VLANID','PROTOCOL',$key)] ?? 'ipv4'; break;}
+  }
+}
+list($subnet6,$mask6) = explode('/',$dockercfg["DOCKER_SUBNET6_$port"]);
+list($range6,$size6) = explode('/',$dockercfg["DOCKER_RANGE6_$port"]);
+?>
+<?if ($protocol != 'ipv4' && $subnet6):?>
+为接口上的 IPv6 自定义网络 <?=$network?>:
+: <span class="gw6">**子网:** <?=$subnet6?>/<?=$mask6?></span>
+  <span class="gw6">**网关:** <?=$dockercfg["DOCKER_GATEWAY6_$port"]?></span>
+  **DHCP pool:** <?=$range6?"$range6/$size6":"未设置"?>
+<?endif;?>
+<?endforeach;?>
+</div>
+<?endif;?>
+
+&nbsp;
+: <input id="applyBtn" type="button" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<form id="removeForm" method="POST" action="/update.php" target="progressFrame">
+  <input type="hidden" name="#command" value="/plugins/dynamix.docker.manager/scripts/docker_rm">
+</form>
+
+<?if (!$DockerStopped):?>
+<div markdown="1" class="advanced">
+<div id="title"><span class="left"><i class="title fa fa-address-card-o"></i>Docker 卷信息</span></div>
+btrfs 文件系统显示:
+: <?="<pre>".shell_exec("btrfs filesystem show /var/lib/docker")."</pre>"?>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?exec("$docroot/webGui/scripts/btrfs_scrub status /var/lib/docker", $scrub_status, $retval)?>
+btrfs 清理状态:
+: <?="<pre>".implode("\n", $scrub_status)."</pre>"?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="start">
+<input type="hidden" name="#arg[2]" value="/var/lib/docker">
+<input type="hidden" name="#arg[3]" value="-r">
+&nbsp;
+: <input type="submit" value="清理"><label><input type="checkbox" name="#arg[3]" value=""> 纠正文件系统错误</label>
+
+> **Scrub** 运行 *btrfs scrub* 程序以检查文件系统的完整性.
+>
+> 如果需要修复, 则应检查 *纠正文件系统错误*, 然后运行第二次 Scrub 遍历. 这将允许 *btrfs scrub* 修复文件系统。
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="cancel">
+<input type="hidden" name="#arg[2]" value="/var/lib/docker">
+&nbsp;
+: <input type="button" value="刷新" onclick="refresh()"><input type="submit" value="取消"> *运行中*
+
+> **取消** 将取消正在进行的清理操作.
+
+</form>
+<?endif;?>
+</div>
+<?endif;?>
+
+<script src="<?autov('/webGui/javascript/jquery.filetree.js')?>"></script>
+<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<script>
+function prepareDocker(form) {
+  var bye = false;
+  $(form).find('input[type="text"]').each(function(){
+    if ($(this).attr('pattern')) {
+      var pattern = new RegExp($(this).attr('pattern'));
+      if (!pattern.test($(this).val())) {$(this).css('color','red'); bye = true;}
+    }
+  });
+  if (bye) return false;
+  $(form).find('input:hidden[name^="DOCKER_DHCP_"]').each(function(){
+    var id = '#'+$(this).attr('name')+'_';
+    if ($(id+'dhcp').prop('checked') && $(id+'edit').prop('checked')) {
+      var net = $(id+'net').text();
+      for (var b=1; b<=3; b++) if ($(id+b).length>0) net += $(id+b).val()+'.';
+      net = net.replace(/\.$/,'/')+$(id+'mask').val();
+      $(this).val(net);
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+  });
+  $(form).find('input:hidden[name^="DOCKER_DHCP6_"]').each(function(){
+    var id = '#'+$(this).attr('name')+'_';
+    if ($(id+'dhcp').prop('checked') && $(id+'edit').prop('checked')) {
+      var net = $(id+'net').text()+$(id+'text').val();
+      if (net.substr(-2)!='::') net += '::';
+      $(this).val(net+'/'+$(id+'mask').val());
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+  });
+  $(form).find('input[name^="DOCKER_SUBNET_"]').each(function(){
+    var edit = '#'+$(this).attr('name').replace('SUBNET','CUSTOM')+'_edit';
+    var mask = '#'+$(this).attr('name').replace('SUBNET','CUSTOM')+'_mask';
+    if ($(edit).prop('checked')) {
+      if ($(this).val()) $(this).val($(this).val()+'/'+$(mask).val());
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+    $(mask).prop('disabled',true);
+  });
+  $(form).find('input[name^="DOCKER_GATEWAY_"]').each(function(){
+    var edit = '#'+$(this).attr('name').replace('GATEWAY','CUSTOM')+'_edit';
+    if (!$(edit).prop('checked')) $(this).val('').prop('disabled',false);
+  });
+  $(form).find('input[name^="DOCKER_RANGE_"]').each(function(){
+    var edit = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_edit';
+    var size = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_size';
+    var dhcp = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_dhcp';
+    if ($(edit).prop('checked') && $(dhcp).prop('checked')) {
+      if ($(this).val()) $(this).val($(this).val()+'/'+$(size).val());
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+    $(size).prop('disabled',true);
+  });
+  $(form).find('input[name^="DOCKER_SUBNET6_"]').each(function(){
+    var edit6 = '#'+$(this).attr('name').replace('SUBNET','CUSTOM')+'_edit';
+    var mask6 = '#'+$(this).attr('name').replace('SUBNET','CUSTOM')+'_mask';
+    if ($(edit6).prop('checked')) {
+      if ($(this).val()) $(this).val($(this).val()+'/'+$(mask6).val());
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+    $(mask6).prop('disabled',true);
+  });
+  $(form).find('input[name^="DOCKER_GATEWAY6_"]').each(function(){
+    var edit6 = '#'+$(this).attr('name').replace('GATEWAY','CUSTOM')+'_edit';
+    if (!$(edit6).prop('checked')) $(this).val('').prop('disabled',false);
+  });
+  $(form).find('input[name^="DOCKER_RANGE6_"]').each(function(){
+    var edit6 = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_edit';
+    var size6 = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_size';
+    var dhcp6 = '#'+$(this).attr('name').replace('RANGE','CUSTOM')+'_dhcp';
+    if ($(edit6).prop('checked') && $(dhcp6).prop('checked')) {
+      if ($(this).val()) $(this).val($(this).val()+'/'+$(size6).val());
+    } else {
+      $(this).val('').prop('disabled',false);
+    }
+    $(size6).prop('disabled',true);
+  });
+  return true;
+}
+function changeEdit(id,ip) {
+  var checked = $('#'+id).prop('checked');
+  var id1 = '#'+id.substr(0,id.length-4);
+  if (ip==4) {
+    var name = id.substr(0,id.length-5).replace('DHCP','AUTO');
+    var id2 = '#'+name.replace('AUTO','DHCP6')+'_';
+  } else {
+    var name = id.substr(0,id.length-5).replace('DHCP6','AUTO');
+    var id2 = '#'+name.replace('AUTO','DHCP')+'_';
+  }
+  if (checked) {
+    $(id1+'line').removeClass('disabled');
+    $(id1+'dhcp').prop('disabled',false);
+    $(id2+'line').removeClass('disabled');
+    $(id2+'dhcp').prop('disabled',false);
+    $(id2+'edit').prop('checked',true);
+  } else {
+    $(id1+'line').addClass('disabled','disabled');
+    $(id1+'dhcp').prop('disabled',true);
+    $(id2+'line').addClass('disabled','disabled');
+    $(id2+'dhcp').prop('disabled',true);
+    $(id2+'edit').prop('checked',false);
+  }
+  $('input:hidden[name="'+name+'"]').val(checked?'':'no');
+  if (ip==4) {
+    changeDHCP(id,4,$('#'+id.replace('edit','dhcp')).prop('checked'));
+    id = id.replace('DHCP','DHCP6');
+    $('#'+id).prop('checked',checked);
+    changeDHCP(id,6,$('#'+id.replace('edit','dhcp')).prop('checked'));
+  } else {
+    changeDHCP(id,6,$('#'+id.replace('edit','dhcp')).prop('checked'));
+    id = id.replace('DHCP6','DHCP');
+    $('#'+id).prop('checked',checked);
+    changeDHCP(id,4,$('#'+id.replace('edit','dhcp')).prop('checked'));
+  }
+}
+function changeDHCP(id,ip,sid) {
+  if (sid==null) sid = true;
+  var checked = $('#'+id).prop('checked') && sid;
+  id = '#'+id.substr(0,id.length-4);
+  if (ip==4) {
+    for (var b=1; b<=3; b++) if ($(id+b).length>0) $(id+b).prop('disabled',!checked);
+    $(id+'mask').prop('disabled',!checked);
+    if (checked) {
+      $(id+'size').show();
+      $(id+'net').removeClass('disabled');
+    } else {
+      $(id+'size').hide();
+      $(id+'net').addClass('disabled','disabled');
+    }
+  } else {
+    $(id+'text').prop('disabled',!checked);
+    $(id+'mask').prop('disabled',!checked);
+    if (checked) {
+      $(id+'net').removeClass('disabled');
+    } else {
+      $(id+'net').addClass('disabled','disabled');
+    }
+  }
+}
+function customDHCP(id,ip) {
+  var checked = $('#'+id).prop('checked');
+  id = '#'+id.substr(0,id.length-4);
+  $(id+'pool').prop('disabled',!checked);
+  $(id+'size').prop('disabled',!checked);
+  if (ip==4) checked ? $(id+'hosts').show() : $(id+'hosts').hide();
+}
+function changeCustom(id,ip) {
+  var checked = $('#'+id).prop('checked');
+  var device = id.substr(0,id.length-5).split('_').splice(2,2).join('.').toLowerCase();
+  id = '#'+id.substr(0,id.length-4);
+  $(id+'net').prop('disabled',!checked);
+  $(id+'mask').prop('disabled',!checked);
+  $(id+'gw').prop('disabled',!checked);
+  $(id+'dhcp').prop('disabled',!checked);
+  $(id+'pool').prop('disabled',!checked);
+  $(id+'size').prop('disabled',!checked);
+  if (checked) {
+    $(id+'hosts').show();
+    $(id+'line').removeClass('disabled');
+  } else {
+    $(id+'hosts').hide();
+    $(id+'line').addClass('disabled','disabled');
+  }
+}
+function changeMask(id,val) {
+  var mask = Math.pow(2,32-val);
+  id = '#'+id.substr(0,id.length-4);
+  $(id+'size').html('('+mask+' hosts)');
+  for (var b=1; b<=3; b++) {
+    var cell = id+b;
+    switch (b) {
+      case 1: var step = mask/65536%256; break;
+      case 2: var step = mask/256%256; break;
+      case 3: var step = mask%256; break;
+    }
+    if (step==0) step = 256;
+    if ($(cell).length==0) continue;
+    var max = $(cell+' option').size();
+    for (var i=0; i < max; i++) if (i%step==0) $(cell+' option:eq('+i+')').removeClass('hide'); else $(cell+' option:eq('+i+')').addClass('hide');
+    if ($(cell+' option:selected').val()%step!=0) $(cell+' option:selected').removeAttr('selected');
+  }
+}
+function changeHosts(id,val) {
+  var mask = Math.pow(2,32-val);
+  id = '#'+id.substr(0,id.length-4);
+  $(id+'hosts').html('('+mask+' hosts)');
+}
+function ip2int(ip) {
+  return ip.split('.').reduce(function(ipInt,octet){return (ipInt<<8)+parseInt(octet,10)},0)>>>0;
+}
+function checkDHCP() {
+  var good = true;
+  $('#settingsForm').find('input[name^="DOCKER_DHCP_"]').each(function(){
+    if ($(this).val()) {
+      var id = $(this).attr('name');
+      var pool = $(this).val().split('/');
+      var base = $('#'+id).text().split('/');
+      if (good && typeof(pool[1])=='undefined') {good = false; swal('缺少子网大小','未定义子网池大小','error');}
+      if (good && pool[1]<=base[1]) {good = false; swal('无效的子网大小','子网池太大','error');}
+      if (typeof(pool[1])=='undefined') pool[1] = 0;
+      if (typeof(base[1])=='undefined') base[1] = 32;
+      var toppool = ip2int(pool[0]);
+      var topbase = ip2int(base[0]);
+      var endpool = toppool+Math.pow(2,32-pool[1]);
+      var endbase = topbase+Math.pow(2,32-base[1]);
+      if (good && (toppool < topbase || endpool > endbase)) {good = false; swal('无效的池地址','池地址超出范围','error');}
+    }
+  });
+  if (good) $('#settingsForm').find('input[name^="DOCKER_DHCP6_"]').each(function(){
+    if ($(this).val()) {
+      var id = $(this).attr('name');
+      var pool = $(this).val().split('/');
+      var base = $('#'+id).text().split('/');
+      if (good && typeof(pool[1])=='undefined') {good = false; swal('缺少子网大小','未定义子网池大小','error');}
+      if (good && pool[1]<=base[1]) {good = false; swal('无效的子网大小','子网池太大','error');}
+    }
+  });
+  return good;
+}
+function checkIP() {
+  var validIP4 = /^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+  var validIP6 = /^((?=.*::)(?!.*::.+::)(::)?([\dA-F]{1,4}:(:|\b)|){5}|([\dA-F]{1,4}:){6})((([\dA-F]{1,4}((?!\3)::|:\b|$))|(?!\2\3)){2}|(((2[0-4]|1\d|[1-9])?\d|25[0-5])\.?\b){4})$/i;
+  var error = false;
+  $('#settingsForm').find('input[name^="DOCKER_SUBNET_"]').each(function(){
+    if ($(this).val() && !validIP4.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv4 子网','请输入有效的子网','error'); return false;}
+  $('#settingsForm').find('input[name^="DOCKER_GATEWAY_"]').each(function(){
+    if ($(this).val() && !validIP4.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv4 网关','请输入有效的网关','error'); return false;}
+  $('#settingsForm').find('input[name^="DOCKER_RANGE_"]').each(function(){
+    if ($(this).val() && !validIP4.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv4 范围','请输入有效的范围','error'); return false;}
+  $('#settingsForm').find('input[name^="DOCKER_SUBNET6_"]').each(function(){
+    if ($(this).val() && !validIP6.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv6 子网','请输入有效的子网','error'); return false;}
+  $('#settingsForm').find('input[name^="DOCKER_GATEWAY6_"]').each(function(){
+    if ($(this).val() && !validIP6.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv6 网关','请输入有效的网关','error'); return false;}
+  $('#settingsForm').find('input[name^="DOCKER_RANGE6_"]').each(function(){
+    if ($(this).val() && !validIP6.test($(this).val())) error = true;
+  });
+  if (error) {swal('无效的 IPv6 范围','请输入有效的范围','error'); return false;}
+  return true;
+}
+function showLogOptions(log) {
+  if (log == 'no') {
+    $('#DOCKER_LOG_OPTIONS').hide('slow');
+  } else {
+    $('#DOCKER_LOG_OPTIONS').show('slow');
+  }
+}
+$(function() {
+  $("#applyBtn").click(function(){
+    if (!checkDHCP() || !checkIP()) return;
+    if ($("#deleteCheckbox").length && $("#deleteCheckbox").is(":checked")) {
+      $("#removeForm").submit();
+      return;
+    }
+    if ($("#DOCKER_IMAGE_SIZE").length && $("#DOCKER_IMAGE_FILE").length) {
+      var isError = false;
+      var size = $("#DOCKER_IMAGE_SIZE").val();
+      var target = $("#SIZE_ERROR");
+      if (! $.isNumeric( size )){
+        target.fadeIn().html('错误: 值必须为数字.');
+        isError = true;
+      } else {
+        target.fadeOut();
+      }
+      var image = $("#DOCKER_IMAGE_FILE").val();
+
+      target = $("#IMAGE_ERROR");
+      $.getJSON( "/plugins/dynamix.docker.manager/include/UpdateConfig.php?is_dir=" + image).done(function(json) {
+        if (json.is_dir === true){
+          target.fadeIn().html('错误: 必须是文件; 提供目录.');
+          isError = true;
+        } else {
+          target.fadeOut();
+        }
+
+        if (!isError) {$("#settingsForm").submit();}
+      });
+      return;
+    }
+
+    $("#settingsForm").submit();
+  });
+
+  $("#DOCKER_ENABLED").change(function changeService() {
+    if ($(this).val()=='yes') {
+      $('#arraystopped').fadeIn('slow');
+    } else {
+      $('#arraystopped').fadeOut('fast');
+    }
+  });
+  if ($("#DOCKER_ENABLED").val()!='yes') $('#arraystopped').hide();
+
+  if ($("#DOCKER_IMAGE_FILE").length) {
+    $("#DOCKER_IMAGE_FILE").on("input change", function(){
+      $("#IMAGE_ERROR").fadeOut();
+      $("#applyBtn").prop("disabled", false);
+<?if (file_exists($dockercfg['DOCKER_IMAGE_FILE'])):?>
+      if ($(this).val() != "<?=$dockercfg['DOCKER_IMAGE_FILE']?>") {
+        $("#deleteCheckbox").prop("disabled", true).attr("checked", false);
+        $("#deletePanel").fadeOut();
+      } else {
+        $("#deleteCheckbox").attr("checked", false).prop("disabled", false);
+        $("#deletePanel").fadeIn();
+      }
+<?endif;?>
+    });
+
+<?if ($var['fsState'] == "Started"):?>
+    $("#DOCKER_IMAGE_FILE").fileTreeAttach(null, null, function(folder) {
+      $("#DOCKER_IMAGE_FILE").val(folder + 'docker.img').change();
+    });
+<?endif;?>
+
+    $("#deleteCheckbox").change(function(){
+      var checked = $(this).is(":checked");
+      $("#DOCKER_ENABLED").prop("disabled", checked).val('no');
+      $("#DOCKER_IMAGE_SIZE").prop("disabled", checked);
+      $("#DOCKER_IMAGE_FILE").prop("disabled", checked).val("<?=$dockercfg['DOCKER_IMAGE_FILE']?>");
+      $("#DOCKER_APP_CONFIG_PATH").prop("disabled", checked);
+      $("#DOCKER_APP_UNRAID_PATH").prop("disabled", checked);
+      $("#applyBtn").val(checked ? "Delete" : "Apply").removeAttr('disabled');
+    });
+  }
+
+  if ($.cookie('dockersettings_view_mode') == 'advanced') {
+    $('.advanced').show();
+    $('.basic').hide();
+  }
+  $('.advancedview').switchButton({
+    labels_placement: "left",
+    on_label: '高级视图',
+    off_label: '基本视图',
+    checked: $.cookie('dockersettings_view_mode') == 'advanced'
+  });
+  $('.advancedview').change(function () {
+    $('.advanced').toggle('slow');
+    $('.basic').toggle('slow');
+    $.cookie('dockersettings_view_mode', $('.advancedview').is(':checked') ? 'advanced':'basic', {expires:3650});
+  });
+
+  showStatus('pid','dockerd');
+<?if ($DockerStopped):?>
+  showLogOptions(document.settingsForm.DOCKER_LOG_ROTATION.value);
+<?endif;?>
+<?if ($var['fsState'] == "Started"):?>
+  $("#DOCKER_APP_CONFIG_PATH").fileTreeAttach();
+<?endif;?>
+});
+</script>

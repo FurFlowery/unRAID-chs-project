@@ -1,0 +1,140 @@
+Menu="OtherSettings"
+Type="xmenu"
+Title="全局共享设置"
+Icon="icon-share"
+Tag="share-alt"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$disabled = $var['fsState']!='Stopped' ? 'disabled' : '';
+$disks    = array_filter($disks,'my_disks');
+$width    = [166,300];
+?>
+<script>
+$(function() {
+  $('#s1').dropdownchecklist({emptyText:'全部', width:<?=$width[0]?>, explicitClose:'...关闭'});
+  $('#s2').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>, explicitClose:'...关闭'});
+  presetShare(document.share_settings);
+});
+// Simulate the original input field
+function prepareShare(form) {
+  var include = '';
+  for (var i=0,item; item=form.shareUserInclude.options[i]; i++) {
+    if (item.selected) {
+      if (include.length) include += ',';
+      include += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.shareUserInclude.options[0];
+  item.value = include;
+  item.selected = true;
+  var exclude = '';
+  for (var i=0,item; item=form.shareUserExclude.options[i]; i++) {
+    if (item.selected) {
+      if (exclude.length) exclude += ',';
+      exclude += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.shareUserExclude.options[0];
+  item.value = exclude;
+  item.selected = true;
+}
+function presetShare(form,shares) {
+  var disabled = shares==null ? <?=$disabled ? 'true':'false'?> : shares=='-';
+  var onOff = disabled ? 'disable':'enable';
+  form.shareUserInclude.disabled = disabled;
+  form.shareUserExclude.disabled = disabled;
+  $('#s1').dropdownchecklist(onOff);
+  $('#s2').dropdownchecklist(onOff);
+}
+</script>
+<form markdown="1" name="share_settings" method="POST" action="/update.htm" target="progressFrame" onsubmit="prepareShare(this)">
+
+启用磁盘共享:
+: <select name="shareDisk" size="1" <?=$disabled?>>
+  <?=mk_option($var['shareDisk'], "no", "否")?>
+  <?=mk_option($var['shareDisk'], "yes", "是")?>
+  <?=mk_option($var['shareDisk'], "auto", "自动")?>
+  </select>
+
+> 如果设置为 '否', 则无条件不导出磁盘共享.
+>
+> 如果设置为 '是', 则可能会导出磁盘共享. **警告** 请勿将数据从磁盘共享复制到用户共享
+> 除非您 *知道* 您在做什么. 这可能会导致数据丢失, 因此不受支持.
+>
+> 如果设置为 '自动', 则只能导出不参与 '用户共享' 的磁盘共享.
+
+启用用户共享:
+: <select name="shareUser" size="1" onchange="presetShare(this.form,this.value)" <?=$disabled?>>
+  <?=mk_option($var['shareUser'], "e", "是")?>
+  <?=mk_option($var['shareUser'], "-", "否")?>
+  </select>
+
+> 如果设置为 '是', 则会激活用户共享功能.
+
+包含的磁盘:
+: <select id="s1" name="shareUserInclude" size="1" multiple="multiple" style="display:none">
+  <?foreach ($disks as $disk):?>
+  <?=mk_option_luks($disk['name'], $var['shareUserInclude'], strstr($disk['fsType'],':',true))?>
+  <?endforeach;?>
+  </select>
+
+> 此设置定义了 '包含在用户共享中' 的磁盘阵列.
+> 取消选中所有磁盘将允许包括所有磁盘阵列.
+
+排除的磁盘:
+: <select id="s2" name="shareUserExclude" size="1" multiple="multiple" style="display:none">
+  <?foreach ($disks as $disk):?>
+  <?=mk_option_luks($disk['name'], $var['shareUserExclude'], strstr($disk['fsType'],':',true))?>
+  <?endforeach;?>
+  </select>
+
+> 此设置定义了 '用户共享' 中 '排除' 的磁盘阵列.
+> 取消选中所有磁盘以不排除任何磁盘
+>
+> **注意:** 每个单独的用户共享还包括其自己包含和排除的磁盘集
+> 它们表示此处定义的 包含/排除 磁盘的子集.
+
+可调参数 (支持硬链接):
+: <select name="fuse_useino" size="1" <?=$disabled?>>
+  <?=mk_option($var['fuse_useino'], "no", "否")?>
+  <?=mk_option($var['fuse_useino'], "yes", "是")?>
+  </select>
+
+> 如果设置为 '是' 则支持 link() 操作.
+>
+> 如果设置为 '否' 则不支持硬链接
+>
+> 备注:
+>
+> * 设置为 '是' 可能会导致旧媒体和 dvd/bluray 播放机使用 NFS 访问共享时出现问题.
+> * 无论如何设置, **mover** 仍将正确处理检测到的任何硬链接.
+
+可调参数 (启用直通 IO):
+: <select name="fuse_directio" size="1" <?=$disabled?>>
+  <?=mk_option($var['fuse_directio'], "auto", "自动")?>
+  <?=mk_option($var['fuse_directio'], "0", "否")?>
+  <?=mk_option($var['fuse_directio'], "1", "是")?>
+  </select>
+
+> **实验**: 如果设置为 '是' 则使用 FUSE *direct_io* 挂载用户共享文件系统.
+> 这将提高写入性能, 但可能会降低读取性能.
+>
+> *自动* 选择为否.
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()"><?if ($disabled):?>阵列必须为 <span class="strong big">已停止</span> 才能更改<?endif;?>
+</form>

@@ -1,0 +1,132 @@
+Menu="NetworkServices"
+Title="Syslog 服务器"
+Icon="icon-eula"
+Tag="file-text-o"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$syslog = @(array)parse_ini_file('/boot/config/rsyslog.cfg');
+?>
+<style>
+span.span{display:inline-block;width:224px}
+</style>
+<script>
+function localFolder(local,time) {
+  if (local) $('#local_folder').show(time); else $('#local_folder').hide(time);
+}
+function logOptions(log,time) {
+  if (log) $('#log_options').show(time); else $('#log_options').hide(time);
+}
+
+$(function(){
+  localFolder(document.syslog.local_server.value);
+  logOptions(document.syslog.log_rotation.value);
+});
+</script>
+
+<form markdown="1" name="syslog" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="/boot/config/rsyslog.cfg">
+<input type="hidden" name="#command" value="/webGui/scripts/rsyslog_config">
+
+本地系统日志服务器:
+: <span class="span"><select name="local_server" class="narrow" onchange="localFolder(this.value,'slow')">
+  <?=mk_option($syslog['local_server'], "", "禁用")?>
+  <?=mk_option($syslog['local_server'], "1", "启用")?>
+  </select></span>
+  <select name="server_protocol" class="narrow">
+  <?=mk_option($syslog['server_protocol'], "udp", "UDP")?>
+  <?=mk_option($syslog['server_protocol'], "tcp", "TCP")?>
+  <?=mk_option($syslog['server_protocol'], "both", "两者")?>
+  </select>
+  <input type="text" name="server_port" class="trim" value="<?=$syslog['server_port']?>" maxlength="5" placeholder="514">
+
+> 让服务器充当中央系统日志服务器, 并从其他系统收集系统日志消息.
+> 服务器可以使用可选的端口号侦听 UDP, TCP 或两者.
+>
+> Syslog 信息按 IP 地址存储. 那就是每个系统都有自己的 Syslog 文件.
+
+<div markdown="1" id="local_folder" style="display:none">
+本地系统日志文件夹:
+: <select name="server_folder" class="narrow">
+  <?=mk_option(0,'','&lt;custom&gt;','disabled')?>
+  <?foreach ($shares as $share){echo mk_option($syslog['server_folder'], '/mnt/user/'.$share['name'], $share['name']);}?>
+  </select>
+
+> 选择将存储系统日志的共享文件夹。
+> 建议您使用位于高速缓存驱动器上的共享, 防止阵列磁盘出现故障.
+
+本地系统日志轮换:
+: <select name="log_rotation" class="narrow" onchange="logOptions(this.value,'slow')">
+  <?=mk_option($syslog['log_rotation'], "", "禁用")?>
+  <?=mk_option($syslog['log_rotation'], "1", "启用")?>
+  </select>
+
+> 默认情况下, 日志轮换被禁用, 将创建一个大小不受限制的日志文件.
+>
+> 启用日志轮换以限制日志文件的大小, 并指定要在轮换方案中保留的文件数.
+
+<div markdown="1" id="log_options" style="display:none">
+本地系统日志最大文件大小:
+: <select name="log_size" class="narrow">
+  <?=mk_option($syslog['log_size'], '1M', '1 MB')?>
+  <?=mk_option($syslog['log_size'], '2M', '2 MB')?>
+  <?=mk_option($syslog['log_size'], '5M', '5 MB')?>
+  <?=mk_option($syslog['log_size'], '10M', '10 MB')?>
+  <?=mk_option($syslog['log_size'], '20M', '20 MB')?>
+  <?=mk_option($syslog['log_size'], '50M', '50 MB')?>
+  <?=mk_option($syslog['log_size'], '100M', '100 MB')?>
+  <?=mk_option($syslog['log_size'], '200M', '200 MB')?>
+  <?=mk_option($syslog['log_size'], '500M', '500 MB')?>
+  </select>
+
+> 指定最大日志大小. 当超过此值时, 将发生日志轮换.
+
+本地系统日志文件数:
+: <select name="log_files" class="narrow">
+  <?=mk_option($syslog['log_files'], '1', '1')?>
+  <?=mk_option($syslog['log_files'], '2', '2')?>
+  <?=mk_option($syslog['log_files'], '3', '3')?>
+  <?=mk_option($syslog['log_files'], '4', '4')?>
+  </select>
+
+> 指定要保留在轮换方案中的其它日志文件的数量.
+
+</div>
+</div>
+
+远程系统日志服务器:
+: <span class="span"><input type="text" name="remote_server" class="narrow" value="<?=$syslog['remote_server']?>" maxlength="23" placeholder="计算机名或 IP 地址"></span>
+  <select name="remote_protocol" class="narrow" size="1">
+  <?=mk_option($syslog['remote_protocol'], "udp", "UDP")?>
+  <?=mk_option($syslog['remote_protocol'], "tcp", "TCP")?>
+  </select>
+  <input type="text" name="remote_port" class="trim" value="<?=$syslog['remote_port']?>" maxlength="4" placeholder="514">
+
+> 输入远程系统日志服务器的名称或 IP 地址.
+> 这会将系统日志消息的副本发送到指定的服务器.
+
+将系统日志镜像到 USB 闪存:
+: <select name="syslog_flash" class="narrow" size="1">
+  <?=mk_option($syslog['syslog_flash'], "", "否")?>
+  <?=mk_option($syslog['syslog_flash'], "1", "是")?>
+  </select>
+
+> 此设置默认情况下为否, 并且必须小心使用以避免 USB 设备不必要的磨损.
+>
+> 当需要进行故障排除并且无法获取常规诊断信息时, 将此设置更改为 '是'.
+> Syslog 文件的镜像存储在闪存设备的 **logs** 文件夹中.
+
+&nbsp;
+: <input type="submit" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>

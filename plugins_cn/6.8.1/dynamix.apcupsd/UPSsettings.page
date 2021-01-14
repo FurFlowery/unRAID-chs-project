@@ -1,0 +1,154 @@
+Menu="OtherSettings"
+Type="xmenu"
+Title="UPS 设置"
+Icon="icon-ups"
+Tag="battery-3"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2015, Dan Landon.
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+
+<?
+$sName = "dynamix.apcupsd";
+$cfg = parse_plugin_cfg($sName);
+?>
+
+<style>
+table.ups thead tr th{width:16.6%;padding-left:10px;}
+table.ups tbody tr td{padding-left:10px;font-weight:bold;}
+</style>
+<script>
+function toggleCustomCable(form) {
+  var readonly = form.UPSCABLE.value != 'custom';
+  form.CUSTOMUPSCABLE.readOnly = readonly;
+  if (readonly) form.CUSTOMUPSCABLE.value = '';
+}
+function toggleDevice(form) {
+  var readonly = form.UPSTYPE.value == 'usb';
+  form.DEVICE.readOnly = readonly;
+  if (readonly) form.DEVICE.value = '';
+}
+$(function() {
+  showStatus('pid','apcupsd');
+  toggleCustomCable(document.apcupsd_settings);
+  toggleDevice(document.apcupsd_settings);
+});
+</script>
+<table class="tablesorter shift ups" <?if (!file_exists("/var/run/apcupsd.pid")):?>style="display:none"<?endif;?>>
+<thead><tr><th>UPS 状态</th><th>蓄电池</th><th>剩余运行时间</th><th>额定功率</th><th>UPS 负载</th><th>UPS 负载 %</th></tr></thead>
+<tbody id="ups_summary"><tr><td colspan="6">&nbsp;</td></tr></tbody>
+</table>
+
+<form markdown="1" name="apcupsd_settings" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=$sName?>/<?=$sName?>.cfg">
+<input type="hidden" name="#include" value="/plugins/<?=$sName?>/include/update.apcupsd.php">
+<span style="float:right;margin-right:10px"><a href="http://apcupsd.org/manual/manual.html" target="_blank" title="APC UPS 职守程序用户手册"><i class="fa fa-file-text-o"></i> <u>在线手册</u></a></span>
+
+启动 APC UPS 守护程序:
+: <select name="SERVICE" size="1">
+  <?=mk_option($cfg['SERVICE'], "disable", "否");?>
+  <?=mk_option($cfg['SERVICE'], "enable", "是");?>
+  </select>
+
+> 设置为 '是' 以启用 apcupsd 并启动守护程序, 设置为 '否' 以禁用 apcupsd 并停止守护程序.
+
+UPS 通讯电缆:
+: <select name="UPSCABLE" size="1" onChange="toggleCustomCable(this.form)">
+  <?=mk_option($cfg['UPSCABLE'], "usb", "USB");?>
+  <?=mk_option($cfg['UPSCABLE'], "simple", "简单");?>
+  <?=mk_option($cfg['UPSCABLE'], "smart", "Smart");?>
+  <?=mk_option($cfg['UPSCABLE'], "ether", "网卡");?>
+  <?=mk_option($cfg['UPSCABLE'], "custom", "自定义");?>
+  </select>
+
+> 定义将 UPS 连接到计算机的电缆类型. '通讯电缆' 可能通用的选项包括:
+>
+> + USB, 简单, Smart, 网卡, 或者 自定义指定特殊通讯电缆.
+
+自定义 UPS 通讯电缆:
+: <input type="text" name="CUSTOMUPSCABLE" class="narrow" maxlength="40" value="<?=htmlspecialchars($cfg['CUSTOMUPSCABLE']);?>">
+
+> 按型号指定特殊电缆, 仅适用于将 *UPS 通讯电缆* 设置为 '自定义' 的情况.
+>
+> + 940-0119A, 940-0127A, 940-0128A, 940-0020B
+> + 940-0020C, 940-0023A, 940-0024B, 940-0024C
+> + 940-1524C, 940-0024G, 940-0095A, 940-0095B
+> + 940-0095C, 940-0625A, M-04-02-2000
+
+UPS 类型:
+: <select name="UPSTYPE" size="1" onChange="toggleDevice(this.form)">
+  <?=mk_option($cfg['UPSTYPE'], "usb", "USB");?>
+  <?=mk_option($cfg['UPSTYPE'], "apcsmart", "APCsmart");?>
+  <?=mk_option($cfg['UPSTYPE'], "net", "Net");?>
+  <?=mk_option($cfg['UPSTYPE'], "snmp", "SNMP");?>
+  <?=mk_option($cfg['UPSTYPE'], "dumb", "Dumb");?>
+  <?=mk_option($cfg['UPSTYPE'], "pcnet", "PCnet");?>
+  <?=mk_option($cfg['UPSTYPE'], "modbus", "ModBus");?>
+  </select>
+
+> 定义一个 *UPS 类型*, 它与您拥有的 UPS 类型相对应 (有关详细信息,请参见说明).
+>
+> + **USB** - 大多数新的 UPS 都是 USB
+> + **APCsmart** - 较新的串行字符设备, 适用于使用串行电缆 (非USB) 的 SmartUPS 型号
+> + **Net** - 通过 apcups 的网络信息服务器连接到主机的网络链接. 如果为您的计算机供电的 UPS 连接到另一台计算机进行监视, 则使用此方法
+> + **SNMP** - SNMP 网络链接到启用 SNMP 的 UPS 设备
+> + **Dumb** - 用于旧串行字符设备简单信号的 UPS 
+> + **PCnet** - PowerChute 网络关机协议, 可与 AP9617 系列智能插槽卡一起用作 SNMP 的替代协议
+> + **ModBus** - 串行设备, 可与支持 MODBUS 协议的最新 SmartUPS 型号一起使用
+
+设备:
+: <input type="text" name="DEVICE" maxlength="200" value="<?=htmlspecialchars($cfg['DEVICE']);?>">
+
+> 输入与您的情况相对应的 *设备*, 仅在 *UPS 类型* 未设置为 USB 时适用.
+>
+> + **apcsmart** - /dev/tty**
+> + **net** - hostname:port. 主机名是 NIS 服务器的 IP 地址. 默认端口为 3551
+> + **snmp** - hostname:port:vendor:community. 主机名是网络上 UPS 的 IP 地址或主机名. 供应商可以是 'APC' 或 'APC_NOTRAP'. 'APC_NOTRAP' 将禁用 SNMP 陷阱捕获:  您通常需要 'APC'. 端口通常是 161. 社区通常是 '私有' 的
+> + **dumb** - /dev/tty**
+> + **pcnet** - ipaddr:username:passphrase:port. ipaddr 是 UPS管理卡 的 IP 地址. 用户名和密码是已配置卡的凭据. port 是用于侦听来自 UPS 消息的端口号, 通常为3052. 如果此参数为空或缺失, 则将使用默认值3052.
+> + **modbus** - /dev/tty**
+
+执行关机时的电池电量 (%):
+: <input type="text" name="BATTERYLEVEL" class="narrow" maxlength="3" value="<?=htmlspecialchars($cfg['BATTERYLEVEL']);?>">
+
+> 如果在电源故障期间, 剩余电池百分比 (由 UPS 报告) 低于或等于 *电池电量*, 则 apcupsd 将执行系统关机.
+
+剩余的运行时间来执行关机 (分钟):
+: <input type="text" name="MINUTES" class="narrow" maxlength="3" value="<?=htmlspecialchars($cfg['MINUTES']);?>">
+
+> 如果在电源故障期间, 剩余的运行时间 (以分钟为单位) (由 UPS 报告) 小于或等于 *分钟* (已占用), 将执行系统关机.
+
+关机前的电池时间 (秒):
+: <input type="text" name="TIMEOUT" class="narrow" maxlength="4" value="<?=htmlspecialchars($cfg['TIMEOUT']);?>">
+
+> 如果在电源故障期间, UPS 依靠电池运行 *超时* 数秒或更长时间: apcupsd 将启动系统关机. 零值将禁用此计时器.
+>
+> 如果您有 Smart UPS, 您很可能希望通过将此计时器设置为 0 来禁用它.
+> 这样, 您的 UPS 将继续使用电池, 直到剩余电量百分比降至或低于 *电池电量* 或剩余电池运行时间降至或低于 *分钟*.
+>
+> Of course - when testing - setting this to 60 causes a quick system shutdown if you pull the power plug.
+> If you have an older dumb UPS, you will want to set this to less than the time you know you can run on batteries.
+<div></div>
+> **注意:** *电池电量*, *剩余运行时间*, he  *电池续航时间* 一起工作, 因此第一次发生将导致启动关机.
+
+关机后关闭 UPS:
+: <select name="KILLUPS" size="1">
+  <?=mk_option($cfg['KILLUPS'], "no", "否");?>
+  <?=mk_option($cfg['KILLUPS'], "yes", "是");?>
+  </select>
+
+> 设置为 *是*, 可在关机后关闭 UPS 的电源.
+
+<input type="submit" name="#default" value="Default">
+: <input type="submit" name="#apply" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>

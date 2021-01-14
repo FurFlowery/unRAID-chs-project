@@ -1,0 +1,145 @@
+Menu="Main:1"
+Title="阵列设备"
+Tag="database"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function toggle_state(device,name,action) {
+  var event = null;
+  var button = null;
+  if (name) {
+    if (name.match(/^(parity|disk)/)!==null) event = 'array_status';
+    else if (name.match(/^cache/)!==null) event = 'cache_status';
+    else if (name.match(/^flash/)!==null) event = 'boot_status';
+    else event = 'open_status';
+    $('#dev-'+name).removeClass('fa-circle fa-square fa-warning fa-times').addClass('fa-refresh fa-spin');
+  } else if (device!='Clear') {
+    $('[id^="dev-"]').removeClass('fa-circle fa-square fa-warning fa-times').addClass('fa-refresh fa-spin');
+    button = '[id^=button-]';
+  }
+  pauseEvents(event);
+  $.post('/webGui/include/ToggleState.php',{device:device,name:name,action:action,state:'<?=$var['mdState']?>',csrf:'<?=$var['csrf_token']?>'},function(){resumeEvents(event,500);if (button) $(button).prop('disabled',false);});
+}
+function display_diskio() {
+  if ($.cookie('diskio')===undefined) {
+    $('span.number').show(); $('span.diskio').hide();
+  } else {
+    $('span.diskio').show(); $('span.number').hide();
+  }
+}
+function toggle_diskio(init) {
+  if (!init) {
+    if ($.cookie('diskio')===undefined) $.cookie('diskio','diskio',{path:'/',expires:3650}); else $.removeCookie('diskio',{path:'/'});
+  }
+  if ($.cookie('diskio')===undefined) {
+    $('i.toggle').removeClass('fa-tachometer').addClass('fa-list');
+  } else {
+    $('i.toggle').removeClass('fa-list').addClass('fa-tachometer');
+  }
+  display_diskio();
+}
+function array_status() {
+  var diskio = $.cookie('diskio')===undefined ? 0 : 1;
+  $.post('/webGui/include/DeviceList.php',{path:'<?=$path?>',device:'array'},function(data) {
+    if (data) {$('#array_devices').html(data); display_diskio();}
+<?if ($var['fsState']=='Started'):?>
+    timers.array_status = setTimeout(array_status,3000);
+<?endif;?>
+  });
+}
+<?if ($var['fsState']=='Started'):?>
+$('#tab1').bind({click:function() {$('i.toggle').show('slow');}});
+<?endif;?>
+
+array_status();
+</script>
+
+<table class="disk_status wide">
+<thead><tr><td>设备</td><td>识别号</td><td>温度</td><td>读取</td><td>写入</td><td>错误</td><td>文件系统</td><td>大小</td><td>已使用</td><td>剩余</td><td>查看</td></tr></thead>
+<tbody id="array_devices">
+<?
+foreach ($disks as $disk):
+  if ($disk['type']=='Parity' or $disk['type']=='Data')
+    echo "<tr><td colspan='11'>&nbsp;</td></tr>";
+endforeach;
+if ($display['total']) echo "<tr class='tr_last'><td colspan='11'>&nbsp;</td></tr>";
+?>
+</tbody>
+</table>
+
+> **彩色状态指示器** *阵列设备* 中每行开头的颜色指示器的意义如下:
+>
+> <i class='fa fa-circle orb green-orb'></i>正常运行, 设备处于活动状态. 
+>
+> <i class='fa fa-circle orb grey-orb'></i>设备处于待机模式 (快速启动). 
+>
+> <i class='fa fa-warning orb yellow-orb'></i>模拟设备内容. 
+>
+> <i class='fa fa-times orb red-orb'></i>设备已禁用, 内容已模拟. 
+>
+> <i class='fa fa-square orb blue-orb'></i>新设备. 
+>
+> <i class='fa fa-square orb grey-orb'></i>没有设备, 位置为空. 
+>
+> **标识** 是唯一标识存储设备的 *签名*. 这个签名
+> 包括设备型号, 序列号, Linux 设备 ID 和设备大小. 
+>
+> **温度** 直接从设备读取. 您配置要在哪个单位上使用
+> [显示首选项] (设置/显示设置) 页面. 我们不认真阅读速降的温度
+> 驱动器, 因为这通常会使它们旋转；相反, 我们显示 `*` 符号. 我们也
+> 对于 SSD 和闪存设备显示 `*` 符号, 尽管有时这些设备确实报告有效
+> 温度, 有时它们返回值 `0`. 
+>
+> **大小, 已用, 剩余** 报告设备的总大小, 已用空间和文件剩余空间. 这些
+> 单位还可以在[显示首选项] (设置/显示设置) 页面上进行配置. 的
+> 由于文件系统的开销, 即使对于空磁盘, 使用的空间量也将为非零. 
+>
+> *注意：对于多设备缓存池, 此数据用于 btrfs 返回的整个池. *
+>
+> **读取, 写入** 是发送到设备 I/O 驱动程序的 I/O 请求计数. 这些统计数据可能
+> 可以随时清除, 请参阅下面的 `阵列状态` 部分. 
+>
+> **错误** 计算设备报告的 *不可恢复* 错误的数量
+> I/O 驱动程序由于出现不可恢复的阵列读取错误而导致的数据丢失, 使用奇偶校验即时填充
+> 重建 (并且我们尝试将此数据写回到失败的扇区). 任何无法恢复的
+> 写错误导致 *禁用* 磁盘. 
+>
+> **文件系统** 表示在设备的分区 1 中检测到的文件系统. 
+>
+> **查看** 列包含一个文件夹图标, 指示设备已 *挂载*. 点击图标
+> 浏览文件系统
+>
+> 如果在[显示首选项] (设置/显示设置) 页面上启用了 "显示阵列总数", 则
+> 包括 **总** 行, 可提供设备统计信息, 包括平均温度
+> 您的设备. 
+>
+> 必须停止阵列才能更改阵列设备分配. 
+>
+> Unraid 阵列由一个或两个奇偶校验磁盘和多个数据磁盘组成. 数据
+> 磁盘专门用于存储用户数据, 奇偶校验磁盘提供必要的冗余
+> 从磁盘故障中恢复. 
+>
+> 由于未在整个阵列上对数据进行条带化, 因此奇偶校验磁盘必须与最大数据一样大或更大. 
+> 磁盘. 奇偶校验也应该是您性能最高的驱动器. 
+>
+> 每个数据磁盘都有其自己的文件系统, 可以将其导出为
+> 单独分享. 
+>
+> 单击设备名称以配置各个设备设置并启动某些实用程序. 
+
+<?if ($var['fsState'] == "Stopped"):?>
+<div></div>
+> **插槽** 选择服务器中为阵列设备指定的设备插槽数. 
+> 阵列插槽的最小数量为 2, 并且必须至少为该阵列分配一个设备. 
+<?endif;?>

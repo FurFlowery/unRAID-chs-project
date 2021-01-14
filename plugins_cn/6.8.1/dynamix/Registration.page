@@ -1,0 +1,457 @@
+Menu="About"
+Type="xmenu"
+Title="注册"
+Icon="icon-registration"
+Tag="pencil"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+function my_time2($time) {
+  return $time ? my_time($time) : "任何时间";
+}
+$attached_devices="该服务器已连接 {$var['deviceCount']} 个存储设备".($var['deviceCount']==1 ? "" : "").".";
+$contact_support="<a href='https://lime-technology.com/contact' target='_blank'>联系支持</a>";
+?>
+<style>
+span.thanks{padding-left:10px;color:#6FA239;font-weight:bold;}
+span.thanks.red{color:#F0000C;}
+span.device{font-weight:normal;font-style:italic;}
+div.remark{padding:0 10px;text-align:justify;}
+</style>
+
+
+
+<?if (strstr($var['regTy'], "unregistered")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class="thanks">感谢您尝试 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+在购买注册密钥或安装免费的 30 天 *试用* 密钥之前, 服务器将无法使用.
+*试用* 密钥提供 *专业版* 注册密钥的所有功能.
+
+注册密钥已绑定到 USB 闪存引导设备序列号 (GUID), 请使用至少 1GB 大小的
+高品质名牌设备
+
+注意: 通常情况下 USB 读卡器是 **不** 的支持, 因为大多数读卡器不提供唯一的序列号.
+
+<span class="red-text">重要:</span>
+
++ 请确保您的 <u>[server time](DateTime)</u> 误差在 5 分钟内.
++ 请确保有一个 <u>[DNS server](NetworkSettings)</u>.
+</div>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="获取试用 Key" onclick="openBox('/webGui/include/TrialRequest.php','获取试用 Key',300,600);">
+
+</form>
+<?endif;?>
+
+
+
+<?if ($var['regTy']=="Trial"):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class="thanks"> 感谢您尝试 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+您的 *试用* 密钥包括 *专业版* 注册密钥的所有功能和设备支持
+
+当您的 *试用* 密钥过期后, 您的服务器 **仍然正常工作**, 直到您下次<code>停止</code>阵列.
+
+这时, 您可以购买注册密钥, 或者请求 *试用* 延期.
+</div>
+
+***试用*** 密钥到期日期:
+: <?=my_time($var['regTm2'])?>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="请求延期" disabled>
+
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "no connection")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class="thanks"> 感谢您尝试 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+<span class='red-text'>无法连接到 key-server!</span>
+
+您的 *试用* 密钥需要因特网连接. 请检查您的 [网络设置](NetworkSettings).
+</div>
+
+***试用*** 密钥到期日期:
+: <?=my_time($var['regTm2'])?>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="请求延期" disabled>
+
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "withdrawn")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class="thanks"> 感谢您尝试 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+<span class='red-text'>此版本已被撤回!</span>
+
+This release has been withdrawn for use with *Trial* keys.
+</div>
+
+***试用*** 密钥到期日期:
+: <?=my_time($var['regTm2'])?>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="请求延期" disabled>
+
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "expired")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class="thanks"> 感谢您尝试 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+<span class='red-text'>您的 *试用* Key 已过期.</span>
+
+要继续使用 Unraid OS, 您可以购买注册密钥. 或者, 您可以请求 *延期试用* 密钥.
+
+大多数 *试用* 延期请求会立即处理, 但请允许最多一个工作日收到您的 *延期试用* 密钥.
+</div>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="请求延期" onclick="openBox('/webGui/include/TrialRequest.php','请求试用延期',300,600);">
+
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "invalid installation")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID'];?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class='thanks red'>无效的 <em>试用</em> 安装</span>
+<div markdown="1" class="remark">
+在现有的 Unraid OS 安装中不可能使用 *试用* 密钥.
+
+您可以购买与此 USB 闪存设备对应的注册密钥以继续使用此安装.
+
+更多信息, 请 <?=$contact_support?>.
+</div>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+已注册 GUID:
+: <?=$var['regGUID'];?>
+
+注册为:
+: <?=htmlspecialchars($var['regTo'])?>
+
+注册于:
+: <?=my_time($var['regTm']);?>
+
+过期日期:
+: <?=my_time($var['regTm2']);?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key">
+
+</form>
+<?endif;?>
+
+
+
+<?if ($var['regTy']=="Basic"):?>
+<span class="thanks">感谢您选择 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+要服务器增长时支持更多存储设备, 请单击下面的升级密钥.
+</div>
+
+注册为:
+: <span class="big"><?=htmlspecialchars($var['regTo'])?></span>
+
+注册于:
+: <?=my_time($var['regTm'])?>
+
+可更换:
+: <?=my_time2($var['regTm2'])?>
+
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="BasicGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="升级 Key">
+
+</form>
+<?endif;?>
+
+
+
+<?if ($var['regTy']=="Plus"):?>
+<span class="thanks">感谢您选择 Unraid 操作系统!</span>
+<div markdown="1" class="remark">
+要服务器增长时支持更多存储设备, 请单击下面的升级密钥.
+</div>
+
+注册为:
+: <span class="big"><?=htmlspecialchars($var['regTo'])?></span>
+
+注册于:
+: <?=my_time($var['regTm'])?>
+
+可更换:
+: <?=my_time2($var['regTm2'])?>
+
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="PlusGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="升级 Key">
+
+</form>
+<?endif;?>
+
+
+
+<?if ($var['regTy']=="Pro"):?>
+<span class="thanks">感谢您选择 Unraid 操作系统!</span>
+
+注册为:
+: <span class="big"><?=htmlspecialchars($var['regTo'])?></span>
+
+注册于:
+: <?=my_time($var['regTm'])?>
+
+可更换:
+: <?=my_time2($var['regTm2'])?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <button type="button" onclick="done()">完成</button>
+
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "missing")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class='thanks red'>丢失 Key 文件</span>
+<div markdown="1" class="remark">
+您的注册密钥文件似乎已损坏或丢失. 密钥文件应该位于 USB闪存引导设备的
+[config](Registration/Browse?dir=/boot/config) 目录中.
+
+如果您没有注册密钥文件的备份副本,请 <?=$contact_support?>.
+
+如果这是 <em>试用</em> 安装, 您可以购买注册密钥.
+</div>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key">
+
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "invalid key")):?>
+<form markdown="1" method="GET" action="https://lime-technology.com/getkey" target="_blank">
+<input type="hidden" name="TrialGUID" value="<?=$var['flashGUID']?>">
+<input type="hidden" name="deviceCount" value="<?=$var['deviceCount']?>">
+<span class='thanks red'>注册的 GUID 与 USB 闪存启动设备 GUID 不匹配</span>
+<?if (strstr($var['regTy'], "Trial")):?>
+<div markdown="1" class="remark">
+*试用* 安装仅对第一次注册的 USB 闪存设备有效.
+
+若要在此 USB 闪存设备上继续使用此安装, 您可以购买注册密钥.
+</div>
+<?else:?>
+<div markdown="1" class="remark">
+注册密钥文件与 USB 闪存引导设备不对应. 请将正确的密钥文件复制到. 请将正确的密钥文件复制到 [config](Registration/Browse?dir=/boot/config) 目录
+如果您没有密钥文件的备份副本, 请 <?=$contact_support?>.
+
+如果要用绑定到此 USB闪存设备的新密钥替换注册密钥, 请单击下面的 '替换密钥'. 
+原密钥可以随时更换. 此后, 更换密钥可在一年后再次更换. 
+如果您需要提前更换密钥, 请 <?=$contact_support?>.
+
+**注意:**替换注册密钥后 旧的 USB 闪存设备 GUID 将导致永久列入 *黑名单*.
+</div>
+<?endif;?>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+已注册 GUID:
+: <?=$var['regGUID']?>
+
+注册为:
+: <?=htmlspecialchars($var['regTo'])?>
+
+注册于:
+: <?=my_time($var['regTm'])?>
+
+<?if (strstr($var['regTy'], "Trial")):?>
+
+到期:
+: <?=my_time($var['regTm2'])?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key">
+
+<?else:?>
+
+可更换:
+: <?=my_time2($var['regTm2'])?>
+
+<?if ($var['regTm2']==0 || $var['regTm2']<time()):?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="Replace Key" onclick="openBox('/webGui/include/ReplaceKey.php','Replace Key',600,900);">
+
+<?else:?>
+
+<span class="device"><?=$attached_devices?></span>
+: <input type="submit" value="购买 Key"> <input type="button" value="Replace Key" disabled>
+
+<?endif;?>
+<?endif;?>
+</form>
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "blacklisted")):?>
+<span class='thanks red'>列入黑名单的 USB 闪存 GUID </span>
+<div markdown="1" class="remark">
+This USB Flash boot device has been *blacklisted*. This can occur as a result of transfering your Registration key to
+a replacement USB Flash device, and you are currently booted from your old USB Flash device.
+
+A USB Flash device may also be *blacklisted* if there is no serial number, or if we discover the serial number
+is not unique (this is common with USB card readers).
+
+For more information, please <?=$contact_support?>.
+</div>
+
+Flash 供应商:
+: <?=$var['flashVendor']?>
+
+Flash 产品:
+: <?=$var['flashProduct']?>
+
+Flash GUID:
+: <?=$var['flashGUID']?>
+
+<?endif;?>
+
+
+
+<?if (strstr($var['regTy'], "flash device error")):?>
+<span class='thanks red'>访问物理 USB 闪存启动设备时出错</span>
+<div markdown="1" class="remark">
+There is a physical problem acessing your USB Flash boot device.  Please <?=$contact_support?>.
+</div>
+
+Flash GUID:
+: Error code: <?=$var['regCheck']?>
+
+<?endif;?>

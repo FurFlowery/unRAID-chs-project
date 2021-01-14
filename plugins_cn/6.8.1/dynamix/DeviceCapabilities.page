@@ -1,0 +1,33 @@
+Menu="Device New"
+Title="功能"
+Tag="building"
+Cond="strpos($disks[$name]['status'],'_NP')===false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+$(function() {
+  $.post("/webGui/include/SmartInfo.php",{cmd:'capabilities',port:'<?=addslashes(htmlspecialchars($disks[$name]['device']??$name))?>',name:'<?=addslashes(htmlspecialchars($name))?>'}, function(data) {
+    $('#disk_capabilities').html(data);
+  });
+});
+</script>
+<table class='share_status small'>
+<thead><td style="width:33%">功能</td><td>值</td><td>信息</td></thead>
+<tbody id="disk_capabilities"><tr><td colspan='3'><div class="spinner"></div></td></tr></tbody>
+</table>
+<input type="button" value="完成" onclick="done()">
+
+> 此列表显示此磁盘支持的 SMART 功能.
+>
+> 在此处观察 SMART 短期和扩展自我测试的预计持续时间.

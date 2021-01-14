@@ -1,0 +1,192 @@
+Menu="Device:2 New:2"
+Title="自检"
+Tag="wrench"
+Cond="strpos($disks[$name]['status'],'_NP')===false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$date = $date ?? date('Ymd-Hi');
+$live = exec("hdparm -C ".escapeshellarg("/dev/$dev")."|grep -Pom1 'active|unknown'");
+$zip  = str_replace(' ','_',strtolower($var['NAME']))."-smart-$date.zip";
+
+// deal with unassigned devices
+if (!$dev) {
+  $dev = $name; 
+  foreach ($devs as $disk) {
+    if ($disk['device']==$name) {$file = $disk['id']."-$date.txt"; break;}
+  }
+}
+
+function spindownDelay() {
+  global $spindown, $delay;
+  $tmp = "/var/tmp/$spindown";
+  return file_exists($tmp) ? file_get_contents($tmp) : $delay;
+}
+?>
+下载 SMART 报告:
+: <input type='button' value='Download' onclick='saveSMART()'>
+
+SMART 自检历史:
+: <input type="button" value="显示" id="toggle_log" onclick="selftestLog()" disabled>
+
+> 点击 **显示** 以查看磁盘上保存的自检历史记录.
+> 仅当磁盘处于活动模式时, 此功能才可用.
+
+<pre id="selftest" style="display:none"></pre>
+
+SMART 错误日志:
+: <input type="button" value="显示" id="toggle_error" onclick="errorLog()" disabled>
+
+> 点击 **显示** 以查看错误报告, 该报告保留在磁盘本身上.
+> 仅当磁盘处于活动模式时，此功能才可用。
+
+<pre id="errorlog" style="display:none"></pre>
+
+SMART 简短的自检:
+: <input type='button' value='开始' id='short_test' onclick="startShortTest()" disabled>
+
+> 开始 *简短的* SMART自检, 可以在 *功能* 部分下查看预计的持续时间. 这通常是几分钟.
+>
+> 当磁盘休眠时, 它将中止任何正在运行的自检.
+> 此功能仅在磁盘处于活动状态下时可用.
+
+SMART 扩展自检:
+: <input type='button' value='开始' id='long_test' onclick="startLongTest()" disabled>
+
+> 启动 *扩展* SMART 自检, 估计持续时间可以在 *功能* 部分下查看. 这通常是几个小时.
+>
+> 当磁盘休眠时, 它将中止任何正在运行的自检. 建议禁用磁盘休眠计时器
+> 以避免此自检中断.
+>
+> 此功能仅在磁盘处于活动状态下时可用.
+
+上次 SMART 测试结果:
+: <span id="test_result"><i class='fa fa-circle-o-notch fa-spin fa-fw'></i></span>
+
+> 如果没有运行测试, 它将在此处显示最新获得的自测结果 (如果有).
+> 否则, 将显示正在运行的测试的进度指示器 (百分比值).
+
+<script>
+function cleanUp() {
+  if (document.hasFocus()) {
+    $('input[value="下载中..."]').val('下载').prop('disabled',false);
+    $.post('/webGui/include/Download.php',{cmd:'delete',file:'<?=addslashes(htmlspecialchars($file))?>'});
+    $.post('/webGui/include/Download.php',{cmd:'delete',file:'<?=addslashes(htmlspecialchars($zip))?>'});
+  } else {
+    setTimeout(cleanUp,4000);
+  }
+}
+function saveSMART() {
+  $('input[value="下载"]').val('下载中...').prop('disabled',true);
+  $.post('/webGui/include/SmartInfo.php',{cmd:'save',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>',file:'<?=addslashes(htmlspecialchars($file))?>'}, function() {
+    $.post('/webGui/include/Download.php',{cmd:'save',source:'<?=addslashes(htmlspecialchars($file))?>',file:'<?=addslashes(htmlspecialchars($zip))?>'},function(zip) {
+      location = zip;
+      setTimeout(cleanUp,4000);
+    });
+  });
+}
+function testUpdate(init) {
+  $.post('/webGui/include/SmartInfo.php',{cmd:'update',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>',type:'<?=addslashes(htmlspecialchars($type))?>',csrf:'<?=$var['csrf_token']?>'},function(data) {
+    $('#test_result').html(data);
+    if (data.indexOf('%')>=0) {
+      if ($('#smart_selftest').length) {
+<?if ($spindown):?>
+        $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').prop('disabled',true);
+<?endif;?>
+        $('#smart_selftest').html('<i class="fa fa-camera"></i> S.M.A.R.T 自检正在进行中...');
+      }
+      if (!init) timers.testUpdate = setTimeout(testUpdate, 3000);
+    } else {
+      if ($('#smart_selftest').length) $('#smart_selftest').html('');
+      $('#short_test').val('开始');
+      $('#long_test').val('开始');
+<?if ($live):?>
+      $('#short_test').removeAttr('disabled');
+      $('#long_test').removeAttr('disabled');
+<?endif;?>
+      if (!init) {
+        $.removeCookie('test.<?=addslashes(htmlspecialchars($dev))?>',{path:'/'});
+<?if ($spindown):?>
+        $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').val(<?=spindownDelay()?>).prop('disabled',false);
+        $.post('/update.htm',{'<?=addslashes(htmlspecialchars($spindown))?>':<?=spindownDelay()?>,changeDisk:'apply'});
+        $.post('/webGui/include/SmartInfo.php',{cmd:'delete',file:'<?=addslashes(htmlspecialchars($spindown))?>'});
+<?endif;?>
+      }
+    }
+  });
+}
+function selftestLog() {
+  $('#selftest').toggle('slow');
+  var text = $('#toggle_log').val()=='Show' ? '隐藏' : '显示';
+  $('#toggle_log').val(text);
+}
+function errorLog() {
+  $('#errorlog').toggle('slow');
+  var text = $('#toggle_error').val()=='Show' ? '隐藏' : '显示';
+  $('#toggle_error').val(text);
+}
+function startShortTest() {
+  if ($('#short_test').val()=='开始') {
+    $('#short_test').val('停止');
+    $('#long_test').attr('disabled','disabled');
+    $.cookie('test.<?=addslashes(htmlspecialchars($dev))?>','short',{path:'/',expires:365});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'short',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(){timers.testUpdate = setTimeout(testUpdate,0);});
+<?if ($spindown):?>
+    $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').val(0).prop('disabled',true);
+    $.post('/update.htm',{'<?=addslashes(htmlspecialchars($spindown))?>':0,changeDisk:'apply'});
+<?endif;?>
+  } else {
+    clearTimeout(timers.testUpdate);
+    $.removeCookie('test.<?=addslashes(htmlspecialchars($dev))?>',{path:'/'});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'stop',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(){setTimeout(testUpdate,0);});
+<?if ($spindown):?>
+    $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').val(<?=spindownDelay()?>).prop('disabled',false);
+    $.post('/update.htm',{'<?=addslashes(htmlspecialchars($spindown))?>':<?=spindownDelay()?>,changeDisk:'apply'});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'delete',file:'<?=addslashes(htmlspecialchars($spindown))?>'});
+<?endif;?>
+  }
+}
+function startLongTest() {
+  if ($('#long_test').val()=='开始') {
+    $('#long_test').val('停止');
+    $('#short_test').attr('disabled','disabled');
+    $.cookie('test.<?=addslashes(htmlspecialchars($dev))?>','long',{path:'/',expires:365});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'long',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(){timers.testUpdate = setTimeout(testUpdate,0);});
+<?if ($spindown):?>
+    $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').val(0).prop('disabled',true);
+    $.post('/update.htm',{'<?=addslashes(htmlspecialchars($spindown))?>':0,changeDisk:'apply'});
+<?endif;?>
+  } else {
+    clearTimeout(timers.testUpdate);
+    $.removeCookie('test.<?=addslashes(htmlspecialchars($dev))?>',{path:'/'});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'stop',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(){setTimeout(testUpdate,0);});
+<?if ($spindown):?>
+    $('select[name="<?=addslashes(htmlspecialchars($spindown))?>"]').val(<?=spindownDelay()?>).prop('disabled',false);
+    $.post('/update.htm',{'<?=addslashes(htmlspecialchars($spindown))?>':<?=spindownDelay()?>,changeDisk:'apply'});
+    $.post('/webGui/include/SmartInfo.php',{cmd:'delete',file:'<?=addslashes(htmlspecialchars($spindown))?>'});
+<?endif;?>
+  }
+}
+$(function() {
+  var smarttest = $.cookie('test.<?=addslashes(htmlspecialchars($dev))?>');
+  testUpdate(smarttest===undefined);
+  if (smarttest !== undefined) $('#'+smarttest+'_test').val('停止').removeAttr('disabled');
+<?if ($live):?>
+  $('#toggle_log').removeAttr('disabled');
+  $('#toggle_error').removeAttr('disabled');
+  $.post('/webGui/include/SmartInfo.php',{cmd:'selftest',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(data){$('#selftest').html(data);});
+  $.post('/webGui/include/SmartInfo.php',{cmd:'errorlog',port:'<?=addslashes(htmlspecialchars($dev))?>',name:'<?=addslashes(htmlspecialchars($name))?>'},function(data){$('#errorlog').html(data);});
+<?endif;?>
+});
+</script>

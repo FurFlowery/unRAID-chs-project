@@ -1,0 +1,215 @@
+Menu="CPUset:1"
+Title="CPU 绑定虚拟机"
+Tag="icon-cpu"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+*/
+?>
+<?
+$libvirtd = pgrep('libvirtd')!==false;
+$dockerd  = pgrep('dockerd')!==false;
+
+$cpus = cpu_list();
+$total = count($cpus);
+$spinner = "<tr><td colspan='".($total+2)."'><div class='spinner'></div></td></tr>";
+$cpuset = implode(';',$cpus);
+
+function create() {
+  // create the table header. Make multiple rows when CPU cores are many ;)
+  global $total,$cpus;
+  $loop = floor(($total-1)/32)+1;
+  $text = [];
+  for ($c = 0; $c < $loop; $c++) {
+    $max = ($c==$loop-1 ? ($total%32?:32) : 32);
+    for ($n = 0; $n < $max; $n++) {
+      unset($cpu1,$cpu2);
+      list($cpu1, $cpu2) = preg_split('/[,-]/',$cpus[$c*32+$n]);
+      $text[$n] .="$cpu1<br>";
+      if ($cpu2) $text[$n] .= "$cpu2<br>";
+    }
+  }
+  $label = implode('<br>',array_fill(0,$loop,'CPU:'.($cpu2 ? '<br>超线程:':'')));
+  echo "<th>$label</th>".implode(array_map(function($t){return "<th>$t</th>";},$text));
+}
+?>
+<style>
+table.tablesorter tr>th+th{text-align:right;vertical-align:top}
+table.tablesorter tr>td+td+td{vertical-align:top}
+table.tablesorter tr>th+th+th,table.tablesorter tr>td+td{text-align:center}
+table.tablesorter th:first-child,table.tablesorter td:first-child{width:180px;text-align:left}
+input.flat{margin:0}
+input.lock{margin:0}
+</style>
+<script>
+String.prototype.strip = function(){return this.replace(/ |\(|\)|\[|\]/g,'');}
+String.prototype.encode = function(){return this.replace(/\./g,'%2e');}
+
+function apply(form) {
+  // disable buttons
+  $(form).find('input[value="Apply"]').prop('disabled',true);
+  $(form).find('input[value="Reset"]').val('Done').prop('onclick',null).off('click').click(function(){done();});
+  $('input[value="Done"]').prop('disabled',true);
+  var wait = 0;
+  var id = $(form).prop('name');
+  var args = {};
+  args['id'] = id;
+  args['names'] = form.names.value.encode();
+  // get the 'checked' cpus
+  $(form).find('input[type=checkbox]').each(function(){
+    if ($(this).prop('checked')) args[$(this).prop('name').encode()] = 'on';
+  });
+  // show the instant wait message
+  $('#wait-'+id).show();
+  // step 1: prepare the update and report back the changes
+  $.post('/webGui/include/UpdateOne.php',args,function(reply){
+    if (reply.error) {
+      swal({type:'error', title:'分配错误', text:reply.error},function(){
+        $('#wait-'+id).hide();
+        $(form).find('input[value="Done"]').val('Reset').prop('disabled',false).prop('onclick',null).off('click').click(function(){reset($('form[name="'+id+'"]'));});
+      });
+    } else if (reply.success) {
+      var data = reply.success.split(';');
+      wait = data.length;
+      for (var i=0; i < data.length; i++) {
+        var name = data[i];
+        $('#'+id+'-'+name.strip()).show('slow');
+        // step 2: apply the changes by updating the vm or container
+        $.post('/webGui/include/UpdateTwo.php',{id:id,name:encodeURI(name)},function(reply){
+          if (reply.error) {
+            // report error and reload table
+            swal({type:'error', title:'执行错误', text:reply.error},function(){
+              $('#wait-'+id).hide();
+              $('input[value="Done"]').prop('disabled',false);
+              reset($('form[name="'+id+'"]'));
+            });
+          } else {
+            $('#'+id+'-'+reply.success.strip()).hide('slow');
+            // cleanup when all is done
+            if (!--wait) {
+              setTimeout(function(){$('#wait-'+id).hide();},500);
+              $('input[value="Done"]').prop('disabled',false);
+              // isolated cpus, need reboot notice?
+              if (id == 'is') notice();
+            }
+          }
+        });
+      }
+    } else {
+      $('#wait-'+id).hide();
+      $('input[value="Done"]').prop('disabled',false);
+      if (id == 'is') notice();
+    }
+  });
+}
+function vm() {
+  // fetch the current vm assignments
+  $.post('/webGui/include/CPUset.php',{id:'vm',cpus:'<?=$cpuset?>'},function(d){
+    var data = d.split('\0');
+    $('#table-vm').html(data[0]);
+    $('#names-vm').val(data[1]);
+    buttons(document.vm);
+  });
+}
+function thread2containers(n) {
+  const selector = $('form[name=ct]').find(`[name$=":${n}"]`);
+  const checkboxes = selector.length;
+  const checked = selector.filter(':checked').length;
+  selector.prop('checked', (checkboxes - checked > checked ? true : false)).change();
+}
+function ct() {
+  // fetch the current container assignments
+  $.post('/webGui/include/CPUset.php',{id:'ct',cpus:'<?=$cpuset?>'},function(d){
+    var data = d.split('\0');
+    $('#table-ct').html(data[0]);
+    $('#names-ct').val(data[1]);
+    buttons(document.ct);
+    // inject thread to containers toggles
+    if($('a[onclick^="thread2containers"]').length === 0) {
+      $('form[name=ct]').find('thead tr th:gt(1)').each((i, elem) => {
+        elem.innerHTML = elem.innerHTML.replace(/(\d+)/g, `<a href="#" onclick="thread2containers(this.innerText);return false;" title="将线程切换到容器">$1</a>`);
+      });
+    }
+  });
+}
+function is() {
+  // fetch the current isolcpu assignments
+  $.post('/webGui/include/CPUset.php',{id:'is',cpus:'<?=$cpuset?>'},function(d){
+    $('#table-is').html(d);
+    buttons(document.is);
+<?if ($safemode):?>
+    $('#table-is').find('input[type=checkbox]').prop('disabled',true);
+<?endif;?>
+  });
+}
+function notice() {
+  // notice to reboot system after changes
+  $.post('/webGui/include/CPUset.php',{id:'cmd'},function(d){
+    if (d==1) $('div.notice.isol').show(); else $('div.notice.isol').hide();
+  });
+}
+function reset(form) {
+  // undo changes without a complete refresh of the page
+  $(form).find('input[value="Apply"]').prop('disabled',true);
+  $(form).find('input[value="Reset"]').val('Done').prop('onclick',null).off('click').click(function(){done();});
+  switch ($(form).prop('name')) {
+    case 'vm': $('#table-vm').html("<?=$spinner?>"); $('div.spinner').html(unraid_logo); vm(); break;
+    case 'ct': $('#table-ct').html("<?=$spinner?>"); $('div.spinner').html(unraid_logo); ct(); break;
+    case 'is': $('#table-is').html("<?=$spinner?>"); $('div.spinner').html(unraid_logo); is(); break;
+  }
+}
+function buttons(form) {
+  $(form).find('input[type=checkbox]').each(function(){$(this).on('change',function(){
+    var total = $(form).find('input[type=checkbox]').length;
+    var checked = 'input[name^="'+$(this).prop('name').split(':')[0]+':'+'"]:checked';
+    var cores = $(form).find(checked).length;
+    // vms must have at least one core selected
+    if ($(form).prop('name')=='vm') $(form).find(checked).prop('disabled',cores<2);
+    // isolation may not have all cores selected
+    if ($(form).prop('name')=='is' && $(this).prop('checked')) $(this).prop('checked',cores<total);
+    // we need the Apply and Done buttons react on checkbox changes
+    $(form).find('input[value="Apply"]').prop('disabled',false);
+    $(form).find('input[value="Done"]').val('Reset').prop('onclick',null).off('click').click(function(){reset(form);});
+  });});
+}
+$(function(){
+<?if ($libvirtd):?>
+  vm();
+<?endif;?>
+<?if ($dockerd):?>
+  ct();
+<?endif;?>
+  is();
+  notice();
+});
+</script>
+<?if ($libvirtd):?>
+<form name="vm">
+<input type="hidden" name="names" id="names-vm" value="">
+<table class='tablesorter shift' style='width:auto'>
+<thead><tr><th><i class="fa fa-list"></i> 虚拟机</th><?create()?></tr></thead>
+<tbody id="table-vm"><?=$spinner?></tbody>
+</table>
+<input type="button" value="Apply" onclick="apply(this.form)" disabled><input type="button" value="完成" onclick="done()"><span id="wait-vm" class="red-text" style="display:none"><i class="fa fa-spinner fa-spin"></i> 请稍候...</span>
+</form>
+<?else:?>
+<div class="notice">没有可用的 CPU 绑定。 必须先启动虚拟机服务</div>
+<?endif;?>
+
+> 此页面提供了虚拟机的当前 CPU 绑定分配的总视图. <br>
+> 它还允许修改这些分配.
+>
+> 正在运行的容器 '先停止'，然后在修改后重新启动. <br>
+> 停止的虚拟机会立即被更改, 并且启动虚拟机时新的分配将变为活动状态.
+>
+> 当按下 ***应用***时, 将执行扫描以查找更改, 随后仅并行更改已更改的虚拟机.
+>
+> *重要提示: 请等到所有更新完成后再离开此页面*.

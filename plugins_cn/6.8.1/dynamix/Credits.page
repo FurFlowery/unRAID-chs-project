@@ -1,0 +1,30 @@
+Menu="About"
+Title="版权许可"
+Icon="icon-credits"
+Tag="trophy"
+---
+**Unraid webGUI** Copyright &copy; 2005-2019, [Lime Technology, Inc.](http://lime-technology.com).
+
+**Dynamix** Copyright &copy; 2012-2019, Bergware International.
+
+**Extended Docker Configuration Page** Copyright &copy; 2014-2017, Guilherme Jardim.
+
+**VM Manager** Copyright &copy; 2015-2019, Eric Schultz, Derek Macias.
+
+**APC UPS Configuration Page** Copyright &copy; 2015, Dan Landon.
+
+**Simple Features** Copyright &copy; 2012, Andrew Hamer-Adams.
+
+The Software comprising the Unraid webGui, which is all files within this repository **except** for
+files listed below, is licensed under GPL version 2.
+
+* The Lime Technology and Unraid logos are property of Lime Technology, Inc.
+and may not be used in any other project without written permission from Lime Technology, Inc.
+
+* Settings, Tools and Case icons. Copyright &copy; 2018-2019, [Magnus Engø](http://www.magnusengo.net/). Used with permission.
+
+**Unraid**&reg; is a registered trademark of [Lime Technology, Inc.](http://lime-technology.com).
+
+This file shall be included in all copies or substantial portions of the Software.
+
+<input type="button" value="完成" onclick="done()">

@@ -1,0 +1,262 @@
+Menu="Utilities"
+Title="系统温度"
+Icon="thermometer"
+Tag="thermometer"
+---
+<?PHP
+/* Copyright 2012-2020, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * Plugin development contribution by gfjardim
+ */
+?>
+<?
+$plugin = 'dynamix.system.temp';
+$translations = file_exists("$docroot/webGui/include/Translations.php");
+require_once "$docroot/plugins/$plugin/include/Legacy.php";
+?>
+<?if (!$translations):?>
+<?eval('?>'.parse_file("$docroot/plugins/$plugin/TempSettings.page"))?>
+<?else:?>
+<?
+$sensors_file  = "/boot/config/plugins/dynamix.system.temp/sensors.conf";
+$drivers_file  = "/boot/config/plugins/dynamix.system.temp/drivers.conf";
+$settings_file = "/etc/sensors.d/sensors.conf";
+
+$unit  = $display['unit'];
+$dot   = $display['number'][0];
+$perl  = exec("which perl 2>/dev/null");
+$width = strstr('gray,azure',$display['theme']) ? 305:300;
+
+function get_sensors() {
+  global $settings_file;
+  $out = [];
+  $tmp = '/tmp/sensors.conf';
+  exec("grep -v 'ignore' $settings_file > $tmp");
+  preg_match_all("/(.*?)\nAdapter:.*?\n(.*?)(?:[\n]{2,})/smi", shell_exec("sensors -u -c $tmp"), $controllers);
+  foreach ($controllers[1] as $key => $controller) {
+    preg_match_all("/(.*):\n\s+([^:]*): (.*)/", $controllers[2][$key], $matches);
+    for ($i=0; $i<count($matches[1]); $i++) {
+      $out[] = array(
+        'ctrl' => $controller,
+        'name' => $matches[1][$i],
+        'attr' => $matches[2][$i],
+        'val'  => $matches[3][$i]
+      );
+    }
+  }
+  unlink($tmp);
+  return $out;
+}
+function get_modules() {
+  global $drivers_file;
+  return file_exists($drivers_file) ? file($drivers_file) : [];
+}
+function save_modules($modules) {
+  global $drivers_file;
+  if ($modules) file_put_contents($drivers_file, preg_replace("/\s|,/", "\n", $modules)); else @unlink($drivers_file);
+}
+function is_module_loaded($module) {
+  return exec("lsmod|grep -cm1 '^$module'")>0;
+}
+function load_module($module) {
+  if (!is_module_loaded($module)) exec("modprobe $module");
+}
+function unload_module($module) {
+  if (is_module_loaded($module)) exec("modprobe -r $module");
+}
+switch ($_POST['tag']) {
+case 'sensors':
+  file_put_contents('/tmp/post',print_r($_POST,true));
+  if ($_POST['rescan']) break;
+  $content = "# sensors\n";
+  $probes = "";
+  foreach ($_POST as $key => $value) {
+    switch ($key) {
+    case 'mb_temp':
+    case 'cpu_temp':
+      [$chip, $input, $label] = explode("|", $value = preg_match("/.*?\|.*?\|.*?/",$value) ? $value : "||");
+      $content .= strlen($chip) ? sprintf("chip \"%s\"\nlabel \"%s\" \"%s\"\n", $chip, $input, $label) : "";
+      break;
+    case 'array_fan':
+      foreach (explode(',',$value) as $fan) {
+        [$chip, $input, $label] = explode("|", $fan = preg_match("/.*?\|.*?\|.*?/",$fan) ? $fan : "||");
+        $content .= strlen($chip) ? sprintf("chip \"%s\"\nlabel \"%s\" \"%s\"\n", $chip, $input, $label) : "";
+      }
+      break;
+    case 'temp_ignore':
+    case 'fan_ignore':
+      foreach (explode('#', $value) as $ignore) {
+        if (!$ignore) continue;
+        [$chip, $input] = explode("|", $ignore);
+        $content .= sprintf("chip \"%s\"\nignore \"%s\"\n", $chip, $input);
+      }
+      break;
+    }
+  }
+  file_put_contents($sensors_file, $content);
+  copy($sensors_file, $settings_file);
+  break;
+case 'modules':
+  foreach ($_POST as $key => $value) {
+    switch ($key) {
+    case 'save':
+      save_modules($_POST['drivers']);
+      break;
+    case 'load':
+      foreach (get_modules() as $module) load_module($module);
+      break;
+    case 'unload':
+      foreach (get_modules() as $module) unload_module($module);
+      break;
+    }
+  }
+  break;
+}
+
+$sensors = get_sensors();
+if (!$all_modules) $all_modules = implode(" ",get_modules());
+$disabled = file_exists($drivers_file) ? "" : "disabled";
+
+$mb_options  = "<option>_(不使用)_</option>";
+$cpu_options = "<option>_(不使用)_</option>";
+$fan_options = "";
+$temp_ignore = "";
+$fan_ignore  = "";
+
+foreach ($sensors as $value) {
+  if (preg_match("/temp\d+_input/", $value['attr'])) {
+    preg_match("/(\d+\.\d)/", $value['val'], $temp);
+    $input = explode("_", $value['attr'])[0];
+    $temp= $temp[1];
+    if ($temp==0) {
+      if ($temp_ignore) $temp_ignore .= '#';
+      $temp_ignore .= "{$value['ctrl']}|$input";
+    } else {
+      $temp = str_replace('.',$dot,$unit=='C' ? $temp : round(9/5*$temp+32));
+      $chip = explode("-", $value['ctrl'])[0];
+      $mb_options .= mk_option(1,sprintf('%s|%s|MB Temp',$value['ctrl'],$input),sprintf('%s - %s - %s &deg;%s', $chip,$value['name'],$temp,$unit),$value['name']=='MB Temp'?'selected':'');
+      $cpu_options .= mk_option(1,sprintf('%s|%s|CPU Temp',$value['ctrl'],$input),sprintf('%s - %s - %s &deg;%s', $chip,$value['name'],$temp,$unit),$value['name']=='CPU Temp'?'selected':'');
+    }
+  } else if (preg_match("/fan\d+_input/", $value['attr'])) {
+    preg_match("/(\d+)/", $value['val'], $rpm);
+    $input = explode("_", $value['attr'])[0];
+    $rpm = $rpm[1];
+    if ($rpm==0) {
+      if ($fan_ignore) $fan_ignore .= '#';
+      $fan_ignore .= "{$value['ctrl']}|$input";
+    } else {
+      $chip = explode("-", $value['ctrl'])[0];
+      $fan_options .= mk_option(1,sprintf('%s|%s|Array Fan',$value['ctrl'],$input),sprintf('%s - %s - %s RPM',$chip,$value['name'],$rpm),$value['name']=='Array Fan'?'selected':'');
+    }
+  }
+}
+?>
+<style>
+select.align{min-width:300px;max-width:300}
+select.hide{display:none}
+</style>
+<script>
+function arrayFan(form) {
+  var array_fan = [];
+  for (var i=0,item; item=form.array_fan.options[i]; i++) {
+    if (item.selected) {
+      array_fan.push(item.value);
+      item.selected = false;
+    }
+  }
+  item = form.array_fan.options[0];
+  item.value = array_fan.join(',');
+  item.selected = true;
+}
+function detectModules() {
+  $('div.spinner').show();
+  $.get('/plugins/<?=$plugin?>/include/DetectModules.php',function(data){
+    $('div.spinner').hide();
+    $('input[name="drivers"]').val(data).prop('placeholder',data ? '_(Click DETECT)_' : '_(No drivers detected)_');
+    $('input[name="save"]').prop('disabled',data=='');
+  });
+}
+$(function() {
+  $('#s1').dropdownchecklist({emptyText:'_(无)_', width:<?=$width?>, explicitClose:'..._(close)_'});
+  $('input[name="save"]').prop('disabled',$('input[name="drivers"]').val()=='');
+<?if (!$perl):?>
+  $('input#detect').prop('disabled',true);
+<?endif;?>
+});
+</script>
+
+<div class='spinner' style='display:none'></div>
+
+<form markdown="1" method="POST">
+<input type="hidden" name="tag" value="modules">
+_(可用设备)_:
+: <input type="text" name="drivers" value="<?=$all_modules?>" placeholder="_(Click DETECT)_">
+
+:temp_drivers_plug:
+> 点击'检测(detect)' 使用 'sensors-detect' 脚本来检测可用监测设备. 检测完成后会保存在列表中.<br>
+> 点击'保存(save)' 将驱动列表保存至硬盘中, 可用在保存前编辑驱动程序字段 (例如: 添加未指定的驱动程序). 一定要保存.<br>
+> 点击 '加载驱动(load drivers) / 卸载驱动(unload drivers)' 来手动加载/卸载驱动模块
+:end
+
+&nbsp;
+<?$loaded = true; foreach (get_modules() as $module) $loaded &= is_module_loaded($module)?>
+: <input type="button" id="detect" value="_(检测)_" onclick="detectModules()"><input type="submit" name="save" value="_(保存)_">
+  <?echo ($loaded) ? "<input type='submit' name='unload' id='btn1' value='"._('卸载驱动')."' $disabled>" : "<input type='submit' name='load' id='btn1' value='"._('加载驱动')."' $disabled>"?>
+  <?if (!$perl):?><span class="orange-text">_(必须安装 **Perl** 依赖用于检测设备)_</span><?endif;?>
+</form>
+
+<div id="title"><span class="left"><i class="fa fa-compass icon"></i>_(Sensors)_</span></div>
+
+<form markdown="1" method="POST" onsubmit="arrayFan(this)">
+<input type="hidden" name="tag" value="sensors">
+<input type="hidden" name="temp_ignore" value="<?=$temp_ignore?>">
+<input type="hidden" name="fan_ignore" value="<?=$fan_ignore?>">
+_(处理器温度)_:
+: <select name="cpu_temp" <?=$disabled?> class="align">
+  <?=$cpu_options?>
+  </select>
+
+:temp_processor_plug:
+> 选择一个可用传感器作为处理器温度指示器
+> 温度将会在页面底部显示
+> 选择'不使用(Not used)'则禁止此传感器.
+:end
+
+_(主板温度)_:
+: <select name="mb_temp" <?=$disabled?> class="align">
+  <?=$mb_options?>
+  </select>
+
+:temp_mainboard_plug:
+> 选择一个可用传感器作为主板温度指示器
+> 温度将会在页面底部显示
+> 选择'不使用(Not used)'则禁止此传感器.
+:end
+
+_(风扇转速)_:
+: <select id="s1" name="array_fan" class="hide" multiple>
+  <?=$fan_options?>
+  </select>
+
+:temp_fan_plug:
+> 选择一个可用传感器作为风扇转速指示器
+> 速度将会在页面底部显示
+> 选择'不使用(Not used)'则禁止此传感器.
+:end
+
+&nbsp;
+: <input type="submit" value="_(应用)_"><input type="button" value="_(完成)_" onclick="done()"><?if (!$disabled):?><input type="submit" name="rescan" value="_(Rescan)_"><?endif;?>
+
+:temp_rescan_plug:
+> 点击'重新扫描(Rescan)' 来刷新传感器列表, 例如当安装了新的风扇时使用.
+:end
+
+</form>
+<?endif;?>

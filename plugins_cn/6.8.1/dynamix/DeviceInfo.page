@@ -1,0 +1,604 @@
+Menu="Device:1"
+Title="$name 设置"
+Tag="hdd-o"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+require_once "$docroot/webGui/include/Preselect.php";
+$disk = &$disks[$name];
+$date = date('Ymd-Hi');
+$events = explode('|',$disk['smEvents'] ?? $var['smEvents'] ?? $numbers);
+
+function displayTemp($temp) {
+  global $display;
+  return $display['unit']=='F' ? round($temp*9/5)+32 : $temp;
+}
+function maintenance_mode() {
+  global $var, $disk;
+  return ($var['fsState']=="Started" && $var['startMode']=="Maintenance" && $disk['luksState']<=1);
+}
+$sheets = []; $n = 0;
+$type = isset($disks[$name]) ? 'Device' : 'New';
+if ($type=='New') {
+  $dev = $name;
+  foreach ($devs as $sheet) {
+    $sheets[] = $sheet['device'];
+    if ($sheet['device']==$name) {$i = $n; $file = $sheet['id']."-$date.txt";}
+    $n++;
+  }
+} else {
+  $disk = $disks[$name];
+  $dev  = $disk['device'];
+  $file = $disk['id']."-$date.txt";
+  foreach ($disks as $sheet) {
+    if ($sheet['type']=='Flash' || $sheet['color']=='grey-off') continue;
+    $sheets[] = $sheet['name'];
+    if ($sheet['name']==$name) { $i = $n; $spindown = "diskSpindownDelay.{$sheet['idx']}"; $delay = $sheet['spindownDelay']; }
+    $n++;
+  }
+}
+$end  = count($sheets)-1;
+$prev = $i>0 ? $sheets[$i-1] : $sheets[$end];
+$next = $i<$end ? $sheets[$i+1] : $sheets[0];
+?>
+<style>
+input.option{display:none;width:40px}
+span.devtext{display:none;font-weight:bold}
+span.helptext{display:none;font-style:italic}
+span.code{display:inline-block;width:186px}
+</style>
+<script>
+function doDispatch(form) {
+  var fields = {};
+<?if ($display['unit']=='F'):?>
+  if (form.<?=addslashes(htmlspecialchars($name))?>_hotTemp.value>0) form.<?=addslashes(htmlspecialchars($name))?>_hotTemp.value = Math.round((form.<?=addslashes(htmlspecialchars($name))?>_hotTemp.value-32)*5/9);
+  if (form.<?=addslashes(htmlspecialchars($name))?>_maxTemp.value>0) form.<?=addslashes(htmlspecialchars($name))?>_maxTemp.value = Math.round((form.<?=addslashes(htmlspecialchars($name))?>_maxTemp.value-32)*5/9);
+<?endif;?>
+  fields['#cfg'] = "/boot/config/smart-one.cfg";
+  fields['#cleanup'] = true;
+  $(form).find('input[name^="<?=addslashes(htmlspecialchars($name))?>_"]').each(function(){fields[$(this).attr('name')] = $(this).val(); $(this).prop('disabled',true);});
+  $.post('/webGui/include/Dispatcher.php',fields);
+}
+function prepareDeviceInfo(form) {
+  var events = [];
+  for (var i=0; i < <?=count($preselect)?>; i++) {
+    if (form.elements['at'+i].checked) events.push(form.elements['at'+i].value);
+    form.elements['at'+i].disabled = true;
+  }
+  var custom = form.smCustom.value.trim();
+  custom = custom.length ? custom.split(',') : [];
+  for (var i=0; i < custom.length; i++) events.push(custom[i].trim());
+  form.smEvents.value = events.join('|');
+  if (form.smEvents.value == '<?=implode('|',$events)?>') form.smEvents.value = '';
+  if (form.smLevel.value == 1.00) form.smLevel.value = '';
+}
+function setGlue(form,reset) {
+  var data =
+  [{glue:'' ,more:0,dev:0,type:''},                                                        // auto
+   {glue:'' ,more:0,dev:0,type:''},                                                        // ata
+   {glue:',',more:1,dev:0,type:'input',min1:'',max1:'0xffffffff'},                         // nvme
+   {glue:',',more:2,dev:0,type:'select',min11:'',min12:'auto',min21:'',min22:12,min23:16}, // sat
+   {glue:'' ,more:0,dev:0,type:''},                                                        // scsi
+   {glue:',',more:1,dev:1,type:'',min1:0,max1:127},                                        // 3ware
+   {glue:',',more:3,dev:1,type:'',min1:0,max1:15,min2:0,max2:7,min3:0,max3:7},             // adaptec
+   {glue:'/',more:2,dev:1,type:'',min1:1,max1:128,min2:1,max2:8},                          // areca
+   {glue:'/',more:3,dev:1,type:'',min1:1,max1:4,min2:1,max2:128,min3:1,max3:4},            // highpoint
+   {glue:'' ,more:1,dev:1,type:'',min1:0,max1:15},                                         // hp cciss
+   {glue:'' ,more:0,dev:0,type:''},                                                        // marvell
+   {glue:',',more:1,dev:1,type:'',min1:0,max1:127}                                         // megaraid
+  ];
+  var n = form.smType.selectedIndex>0 ? form.smType.selectedIndex-1 : <?=$var['smIndex']??0?>;
+  var x = data[n]['more'];
+  var t = data[n]['type'];
+  for (var i=1; i <= x; i++) {
+    switch (t) {
+    case 'input':
+      var min = data[n]['min'+i];
+      var max = data[n]['max'+i];
+      var len = max.toString().length;
+      if (reset) $('input[name="smPort'+i+'"]').val('');
+      $('select[name="smPort'+i+'"]').prop('disabled',true).hide();
+      $('input[name="smPort'+i+'"]').css('width',80).attr('maxlength',len).attr('placeholder',min).prop('disabled',false).show();
+      break;
+    case 'select':
+      var options = [];
+      var c = 1;
+      do {
+        var option = data[n]['min'+i+(c++)];
+        if (typeof(option)!='undefined') {
+          var selected = option==$('input[name="smPort'+i+'"]').val() ? ' selected':'';
+          options.push('<option value="'+option+'"'+selected+'>'+option+'</option>');
+        } else break;
+      } while (true);
+      if (reset) $('select[name="smPort'+i+'"]').val('');
+      $('input[name="smPort'+i+'"]').prop('disabled',true).hide();
+      $('select[name="smPort'+i+'"]').html(options.join('')).prop('disabled',false).show();
+      break;
+    default:
+      var min = data[n]['min'+i];
+      var max = data[n]['max'+i];
+      var len = max.toString().length;
+      if (reset) $('input[name="smPort'+i+'"]').val('');
+      $('select[name="smPort'+i+'"]').prop('disabled',true).hide();
+      $('input[name="smPort'+i+'"]').css('width',40).attr('maxlength',len).attr('placeholder',min+'...'+max).prop('disabled',false).show();
+    }
+  }
+  for (var i=x+1; i <= 3; i++) {
+    $('input[name="smPort'+i+'"]').val('').prop('disabled',false).hide();
+    $('select[name="smPort'+i+'"]').prop('disabled',true).hide();
+  }
+  if (data[n]['dev']==1) {
+    $('#devtext').show();
+    $('input[name="smDevice"]').show();
+    $('#helptext').show();
+  } else {
+    $('#devtext').hide();
+    $('input[name="smDevice"]').val('').hide();
+    $('#helptext').hide();
+  }
+}
+$(function() {
+<?if (count($sheets)>1):?>
+  var ctrl  = "<span class='status <?=$tabbed?'vhshift':'vshift'?>'><span class='waitmsg fa fa-circle-o-notch fa-span fa-fw' style='display:none;margin-right:8px'></span><a href='/Main/<?=$type?>?name=<?=$prev?>' title='previous device'>";
+      ctrl += "<button type='button' style='margin-right:4px' onclick='this.disabled=true;$(\".waitmsg\").show();'><i class='fa fa-chevron-left fa-fw'></i></button></a>";
+      ctrl += "<a href='/Main/<?=$type?>?name=<?=$next?>' title='next device'><button type='button' onclick='this.disabled=true;$(\".waitmsg\").show();'><i class='fa fa-chevron-right fa-fw'></i></button></a></span>";
+<?if ($tabbed):?>
+  $('.tabs').append(ctrl);
+<?else:?>
+  $('div[id=title]:first').append(ctrl);
+<?endif;?>
+<?endif;?>
+  var form = document.smart_settings;
+<?if (!isset($disk['smType'])):?>
+  form.smType.selectedIndex = 0;
+<?endif;?>
+  setGlue(form,false);
+});
+</script>
+
+<form markdown="1" method="POST" action="/update.htm" target="progressFrame" onsubmit="doDispatch(this)">
+名称:
+: <span class='big'><?=htmlspecialchars(my_disk($name))?></span>
+
+分区大小:
+: <?=my_number($disk['sizeSb'])?> KB (K=1024)
+
+分区格式:
+: <?=(strpos($disk['format'],'MBR: 4K-aligned')!==false ? 'MBR: 4K-已对齐' : '')?><?=(strpos($disk['format'],'MBR: 4K-unaligned')!==false ? ' MBR:4K-未对齐' : '')?>&nbsp;
+
+
+<?if ($var['spinupGroups']=="yes" && ($disk['type']=="Data" || $disk['type']=="Parity")):?>
+唤醒组:
+: <input type="text" name="diskSpinupGroup.<?=$disk['idx'];?>" maxlength="256" value="<?=$disk['spinupGroup']?>">
+
+<?endif;?>
+休眠延迟:
+: <select name="diskSpindownDelay.<?=$disk['idx']?>">
+  <?=mk_option($disk['spindownDelay'], "-1", "默认")?>
+  <?=mk_option($disk['spindownDelay'], "0",  "从不")?>
+  <?=mk_option($disk['spindownDelay'], "15", "15 分钟")?>
+  <?=mk_option($disk['spindownDelay'], "30", "30 分钟")?>
+  <?=mk_option($disk['spindownDelay'], "45", "45 分钟")?>
+  <?=mk_option($disk['spindownDelay'], "1",  "1 小时")?>
+  <?=mk_option($disk['spindownDelay'], "2",  "2 小时")?>
+  <?=mk_option($disk['spindownDelay'], "3",  "3 小时")?>
+  <?=mk_option($disk['spindownDelay'], "4",  "4 小时")?>
+  <?=mk_option($disk['spindownDelay'], "5",  "5 小时")?>
+  <?=mk_option($disk['spindownDelay'], "6",  "6 小时")?>
+  <?=mk_option($disk['spindownDelay'], "7",  "7 小时")?>
+  <?=mk_option($disk['spindownDelay'], "8",  "8 小时")?>
+  <?=mk_option($disk['spindownDelay'], "9",  "9 小时")?>
+  </select><span id="smart_selftest" class='orange-text'></span>
+
+磁盘警告温度阈值 (&deg;<?=$display['unit']?>):
+: <input type="number" min="0" max="300" name="<?=htmlspecialchars($name)?>_hotTemp" class="narrow" value="<?=strlen($disk['hotTemp'])?displayTemp($disk['hotTemp']):''?>" placeholder="<?=displayTemp($display['hot'])?>">
+
+> *磁盘警告温度阈值* 在此设置硬盘温度的警告阈值. 超过此阈值将导致警告通知.
+>
+> 设置为 0 将禁用警告阈值 (包括通知).
+
+磁盘临界温度阈值 (&deg;<?=$display['unit']?>):
+: <input type="number" min="0" max="300" name="<?=htmlspecialchars($name)?>_maxTemp" class="narrow" value="<?=strlen($disk['maxTemp'])?displayTemp($disk['maxTemp']):''?>" placeholder="<?=displayTemp($display['max'])?>">
+
+> *临界磁盘温度* 在此设置硬盘温度的临界阈值. 超过此阈值将导致警告通知.
+>
+> 设置为 0 将禁用临界阈值 (包括通知).
+
+<?if ($disk['type']=="Data" || $disk['name']=="cache"):?>
+文件系统状态:
+: <?=(strpos($disk['fsStatus'],'Mounted')!==false ? ' 已挂载' : '')?><?=(strpos($disk['fsStatus'],'-')!==false ? '-' : '')?>&nbsp;
+
+
+<?if ($var['fsState']=="Stopped"):?>
+<?$disabled = $var['mdState']=="SWAP_DSBL" ? "disabled" : "";?>
+<?if ($disk['type']=="Data" || $var['SYS_CACHE_SLOTS']==1):?>
+文件系统类型:
+: <select id="diskFsType" name="diskFsType.<?=$disk['idx'];?>" <?=$disabled?>>
+  <?=mk_option($disk['fsType'], "auto", "自动")?>
+  <?=mk_option($disk['fsType'], "xfs", "xfs")?>
+  <?=mk_option($disk['fsType'], "btrfs", "btrfs")?>
+  <?=mk_option($disk['fsType'], "reiserfs", "reiserfs")?>
+  <?=mk_option($disk['fsType'], "luks:xfs", "xfs - 加密的")?>
+  <?=mk_option($disk['fsType'], "luks:btrfs", "btrfs - 加密的")?>
+  <?=mk_option($disk['fsType'], "luks:reiserfs", "reiserfs - 加密的")?>
+  </select>
+
+> 输入所需的文件系统类型. 更改设备的文件系统类型将允许您使用新文件系
+> 统重新格式化该设备. 请注意: **设备上的所有现有数据都将丢失**.
+
+<?elseif ($var['SYS_CACHE_SLOTS']>1):?>
+文件系统类型:
+: <select id="diskFsType" name="diskFsType.<?=$disk['idx'];?>" <?=$disabled?>>
+  <?=mk_option($disk['fsType'], "auto", "自动")?>
+  <?=mk_option($disk['fsType'], "btrfs", "btrfs")?>
+  <?=mk_option($disk['fsType'], "luks:btrfs", "btrfs - 加密的")?>
+  </select>
+
+<?endif;?>
+<?else:?>
+文件系统类型:
+: <?=str_replace('luks:','',$disk['fsType']).(strpos($disk['fsType'],'luks:')!==false ? ' - 已加密' : '')?>&nbsp;
+
+<?endif;?>
+注释:
+: <input type="text" name="diskComment.<?=$disk['idx'];?>" maxlength="256" value="<?=htmlspecialchars($disk['comment'])?>">
+
+> 该文本将显示在 Windows 资源管理器中 共享的 *注释* 列.
+> 可以输入任意字符, 最多 256 个字符.
+
+磁盘使用率警告阀值 (%):
+: <input type="number" min="0" max="100" name="<?=htmlspecialchars($name)?>_warning" class="narrow" value="<?=strlen($disk['warning'])?$disk['warning']:''?>" placeholder="<?=$display['warning']?>">
+
+> *磁盘使用率警告阀值* 在此设置硬盘使用率的警告阈值. 超过此阈值将导致警告通知.
+>
+> 当警告阈值设置为等于或大于严重阈值时, 将仅存在严重通知 (不存在警告).
+>
+> 设置为 0 将禁用警告阈值 (包括通知).
+
+磁盘使用率临界阀值 (%):
+: <input type="number" min="0" max="100" name="<?=htmlspecialchars($name)?>_critical" class="narrow" value="<?=strlen($disk['critical'])?$disk['critical']:''?>" placeholder="<?=$display['critical']?>")>
+
+> *磁盘使用率临界阀值* 在此设置硬盘使用率的临界阈值. 超过此阈值将导致警告通知.
+>
+> 设置为 0 将禁用临界阈值 (包括通知).
+
+<?endif;?>
+&nbsp;
+: <input type="submit" name="changeDisk" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?if (strpos($disk['fsType'],"btrfs")!==false):?>
+<div id="title" class="nocontrol"><span class="left"><i class="title fa fa-balance-scale"></i>Balance Status</span></div>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?if ($disk['fsStatus']=="Mounted"):?>
+<?exec("$docroot/webGui/scripts/btrfs_balance status /mnt/{$disk['name']}", $balance_status, $retval);?>
+
+btrfs filesystem df:
+: <?echo "<pre>".shell_exec("/sbin/btrfs filesystem df /mnt/{$disk['name']}")."</pre>";?>
+
+btrfs balance status:
+: <?echo "<pre>" . implode("\n", $balance_status) . "</pre>";?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_balance">
+<input type="hidden" name="#arg[1]" value="start">
+<input type="hidden" name="#arg[2]" value="/mnt/<?=$disk['name']?>">
+
+&nbsp;
+: <input type="submit" value="Balance"><input type="text" name="#arg[3]" maxlength="256" value=""> 选项 (请见帮助)
+
+> **Balance** will run the *btrfs balance* program to restripe the extents across all pool devices, for example,
+> to convert the pool from raid1 to raid0 or vice-versa.
+>
+> Without any options specified a "full balance" is performed which will basically rewrite everything in the filesystem.
+> The run time is potentially very long, depending on the filesystem size.
+>
+> Unraid uses these default options when creating a multiple-device pool:
+>
+> `-dconvert=raid1 -mconvert=raid1`
+>
+> For more complete documentation, please refer to the btrfs-balance [Manpage](https://btrfs.wiki.kernel.org/index.php/Manpage/btrfs-balance).
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_balance">
+<input type="hidden" name="#arg[1]" value="cancel">
+<input type="hidden" name="#arg[2]" value="/mnt/<?=$disk['name']?>">
+
+&nbsp;
+: <input type="button" value="Refresh" onclick="refresh()"><input type="submit" value="Cancel"> *运行中*
+
+> **Cancel** 将取消正在进行的 balance 操作.
+
+<?endif;?>
+<?else:?>
+
+&nbsp;
+: <input type="submit" value="Balance" disabled><?=!preg_match('/^cache\d+$/',$disk['name']) ? "<b>Balance</b> is 仅在阵列启动时可用." : "查看缓存设置."?>
+
+<?endif;?>
+</form>
+<?endif;?>
+<?if (strpos($disk['fsType'],"btrfs")!==false):?>
+<div id="title" class="nocontrol"><span class="left"><i class="title fa fa-paint-brush"></i>Scrub Status</span></div>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?if ($disk['fsStatus']=="Mounted"):?>
+<?exec("$docroot/webGui/scripts/btrfs_scrub status /mnt/{$disk['name']}", $scrub_status, $retval);?>
+
+btrfs scrub status:
+: <?echo "<pre>" . implode("\n", $scrub_status) . "</pre>";?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="start">
+<input type="hidden" name="#arg[2]" value="/mnt/<?=$disk['name']?>">
+<input type="hidden" name="#arg[3]" value="-r">
+
+&nbsp;
+: <input type="submit" value="Scrub"><label><input type="checkbox" name="#arg[3]" value="">修复损坏的块</label>
+
+> **Scrub** runs the *btrfs scrub* program which will read all data and metadata blocks from all
+> devices and verify checksums.
+>
+> If *Repair corrupted blocks* is checked, *btrfs scrub* will repair corrupted blocks if there’s a correct copy available.
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="cancel">
+<input type="hidden" name="#arg[2]" value="/mnt/<?=$disk['name']?>">
+
+&nbsp;
+: <input type="button" value="Refresh" onclick="refresh()"><input type="submit" value="Cancel"> *运行中*
+
+> **取消** 将取消正在进行的清理操作。
+
+<?endif;?>
+<?else:?>
+
+&nbsp;
+: <input type="submit" value="文件系统检查" disabled><?=!preg_match('/^cache\d+$/',$disk['name']) ? "<b>文件系统检查</b> 仅在阵列启动时可用" : "查看缓存设置."?>
+
+<?endif;?>
+</form>
+<?endif?>
+<?if (strpos($disk['fsType'],"btrfs")!==false):?>
+<div id="title" class="nocontrol"><span class="left"><i class="title fa fa-shield"></i>检查文件系统状态</span></div>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?if (maintenance_mode()):?>
+<?exec("$docroot/webGui/scripts/btrfs_check status /dev/{$disk['deviceSb']} {$disk['id']}", $check_status, $retval);?>
+
+btrfs 状态检查:
+: <?echo "<pre>" . implode("\n", $check_status) . "</pre>";?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_check">
+<input type="hidden" name="#arg[1]"  value="start">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+<input type="hidden" name="#arg[3]"  value="<?=$disk['id']?>">
+
+&nbsp;
+: <input type="submit" value="检查"><input type="text" name="#arg[4]" maxlength="256" value="--readonly"> 选项 (请见帮助)
+
+> **Check** 将运行 *btrfs check* 程序以检查设备上文件系统完整性.
+>
+> The *Options* field is initialized with *--readonly* which specifies check-only.  If repair is needed, you should run
+> a second Check pass, setting the *Options* to *--repair*; this will permit *btrfs check* to fix the file system.
+>
+> After starting a Check, you should Refresh to monitor progress and status.  Depending on
+> how large the file system is, and what errors might be present, the operation can take **a long time** to finish (hours).
+> Not much info is printed in the window, but you can verify the operation is running by observing the read/write counters
+> increasing for the device on the Main page.
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_check">
+<input type="hidden" name="#arg[1]"  value="cancel">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+<input type="hidden" name="#arg[3]"  value="<?=$disk['id']?>">
+
+&nbsp;
+: <input type="button" value="刷新" onclick="refresh()"><input type="submit" value="取消"> *运行*
+
+> 点击 **取消** 将取消正在进行的检查操作.
+
+<?endif;?>
+<?else:?>
+
+<?if (!preg_match('/^cache\d+$/',$disk['name'])):?>
+&nbsp;
+: <input type="submit" value="检查" disabled> **检查** 仅当阵列在 **维护模式** 下启动时才可用.
+
+<?else:?>
+&nbsp;
+: <input type="submit" value="检查" disabled> 查看缓存设置.
+<?endif;?>
+
+<?endif;?>
+</form>
+<?endif;?>
+<?if (strpos($disk['fsType'],"reiserfs")!==false):?>
+<div id="title" class="nocontrol"><span class="left"><i class="title fa fa-shield"></i>检查文件系统状态</span></div>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?if (maintenance_mode()):?>
+<?exec("$docroot/webGui/scripts/reiserfs_check status /dev/{$disk['deviceSb']} {$disk['id']}", $check_status, $retval);?>
+
+reiserfsck 状态:
+: <?echo "<pre>" . implode("\n", $check_status) . "</pre>";?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/reiserfs_check">
+<input type="hidden" name="#arg[1]"  value="start">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+<input type="hidden" name="#arg[3]"  value="<?=$disk['id']?>">
+
+&nbsp;
+: <input type="submit" value="检查"><input type="text" name="#arg[4]" maxlength="256" value=""> 选项 (请见帮助)
+
+> **Check** 将运行 *reiserfsck* 程序以检查设备上文件系统完整性.
+>
+> The *Options* field may be filled in with specific options used to fix problems in the file system. Typically, you
+> first run a Check pass leaving *Options* blank.  Upon completion, if *reiserfsck* finds any problems, you must
+> run a second Check pass, using a specific option as instructed by the first *reiserfsck* pass.
+>
+> After starting a Check you should Refresh to monitor progress and status.  Depending on
+> how large the file system is, and what errors might be present, the operation can take **a long time** to finish (hours).
+> Not much info is printed in the window, but you can verify the operation is running by observing the read/write counters
+> increasing for the device on the Main page.
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/reiserfs_check">
+<input type="hidden" name="#arg[1]"  value="cancel">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+<input type="hidden" name="#arg[3]"  value="<?=$disk['id']?>">
+
+&nbsp;
+: <input type="button" value="Refresh" onclick="refresh()"><input type="submit" value="Cancel"> *运行中*
+
+> **取消** 将取消正在进行的检查操作.
+
+<?endif;?>
+<?else:?>
+
+&nbsp;
+: <input type="submit" value="检查" disabled> **检查** 仅当阵列在 **维护模式** 下启动时才可用.
+
+<?endif;?>
+</form>
+<?endif;?>
+<?if (strpos($disk['fsType'],"xfs")!==false):?>
+<div id="title" class="nocontrol"><span class="left"><i class="title fa fa-shield"></i>检查文件系统状态</span></div>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?if (maintenance_mode()):?>
+<?exec("$docroot/webGui/scripts/xfs_check status /dev/{$disk['deviceSb']} {$disk['id']}", $check_status, $retval);?>
+
+xfs_repair 状态:
+: <?echo "<pre>" . implode("\n", $check_status) . "</pre>";?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/xfs_check">
+<input type="hidden" name="#arg[1]"  value="start">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+<input type="hidden" name="#arg[3]"  value="<?=$disk['id']?>">
+
+&nbsp;
+: <input type="submit" value="检查"><input type="text" name="#arg[4]" maxlength="256" value="-n"> 选项 (请见帮助)
+
+> **Check** 将运行 *xfs_repair* 程序以检查设备上文件系统完整性.
+>
+> The *Options* field is initialized with *-n* which specifies check-only.  If repair is needed, you should run
+> a second Check pass, setting the *Options* blank; this will permit *xfs_repair* to fix the file system.
+>
+> After starting a Check, you should Refresh to monitor progress and status.  Depending on
+> how large the file system is, and what errors might be present, the operation can take **a long time** to finish (hours).
+> Not much info is printed in the window, but you can verify the operation is running by observing the read/write counters
+> increasing for the device on the Main page.
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/xfs_check">
+<input type="hidden" name="#arg[1]"  value="cancel">
+<input type="hidden" name="#arg[2]"  value="/dev/<?=$disk['deviceSb']?>">
+
+&nbsp;
+: <input type="button" value="Refresh" onclick="refresh()"><input type="submit" value="Cancel"> *运行*
+
+> **取消** 将取消正在进行的检查操作.
+
+<?endif;?>
+<?else:?>
+
+&nbsp;
+: <input type="submit" value="检查" disabled> **检查** 仅当阵列在 **维护模式** 下启动时才可用.
+
+<?endif;?>
+</form>
+<?endif;?>
+
+<div id="title"><span class="left"><i class="title fa fa-plus-square"></i>SMART 设置</span></div>
+
+<form markdown="1" name="smart_settings" method="POST" action="/update.php" target="progressFrame" onsubmit="prepareDeviceInfo(this)">
+<input type="hidden" name="#file" value="/boot/config/smart-one.cfg">
+<input type="hidden" name="#include" value="webGui/include/update.smart.php">
+<input type="hidden" name="#section" value="<?=htmlspecialchars($name)?>">
+<input type="hidden" name="#cleanup" value="true">
+<input type="hidden" name="smEvents" value="">
+<input type="hidden" name="smGlue" value="<?=htmlspecialchars($var['smGlue'])?>">
+SMART 通知值:
+: <select name="smSelect">
+  <?=mk_option($disk['smSelect'], "-1", "使用默认")?>
+  <?=mk_option($disk['smSelect'], "0", "Raw")?>
+  <?=mk_option($disk['smSelect'], "1", "标准化")?>
+  </select>
+
+> SMART 通知是在属性的原始值增加时生成的, 或者是在达到制造商设置的预定义阈值减少时生成的.
+>
+> 每个磁盘可能都有自己的特定设置, 而不是 '默认' 设置 (请参阅 '磁盘设置' 下的 '全局 SMART 设置').
+
+SMART notification tolerance level:
+: <select name="smLevel">
+  <?=mk_option($disk['smLevel'], "-1", "使用默认")?>
+  <?=mk_option($disk['smLevel'], "1.00", "Absolute")?>
+  <?=mk_option($disk['smLevel'], "1.05", "5%")?>
+  <?=mk_option($disk['smLevel'], "1.10", "10%")?>
+  <?=mk_option($disk['smLevel'], "1.15", "15%")?>
+  <?=mk_option($disk['smLevel'], "1.20", "20%")?>
+  <?=mk_option($disk['smLevel'], "1.25", "25%")?>
+  <?=mk_option($disk['smLevel'], "1.50", "50%")?>
+  </select>
+
+> A tolerance level may be given to prevent that small changes result in a notification. Setting a too high tolerance level may result in critical changes without a notification.
+>
+> 每个磁盘可能都有自己的特定设置, 而不是 '默认' 设置 (请参阅 '磁盘设置' 下的 '全局 SMART 设置').
+
+SMART 控制器类型:
+: <select name="smType" onchange="setGlue(this.form,true)">
+  <?=mk_option($disk['smType'], "-1", "使用默认")?>
+  <?=mk_option($disk['smType'], " ", "自动")?>
+  <?=mk_option($disk['smType'], "-d ata", "ATA")?>
+  <?=mk_option($disk['smType'], "-d nvme", "NVMe")?>
+  <?=mk_option($disk['smType'], "-d sat", "SAT")?>
+  <?=mk_option($disk['smType'], "-d scsi", "SCSI")?>
+  <?=mk_option($disk['smType'], "-d 3ware", "3Ware")?>
+  <?=mk_option($disk['smType'], "-d aacraid", "Adaptec")?>
+  <?=mk_option($disk['smType'], "-d areca", "Areca")?>
+  <?=mk_option($disk['smType'], "-d hpt", "HighPoint")?>
+  <?=mk_option($disk['smType'], "-d cciss", "HP cciss")?>
+  <?=mk_option($disk['smType'], "-d marvell", "Marvell")?>
+  <?=mk_option($disk['smType'], "-d megaraid", "MegaRAID")?>
+  </select>
+  <input type="text" name="smPort1" value="<?=$disk['smPort1']?>" class="option"><select name="smPort1" class="narrow" style="display:none" disabled></select>
+  <input type="text" name="smPort2" value="<?=$disk['smPort2']?>" class="option"><select name="smPort2" class="narrow" style="display:none" disabled></select>
+  <input type="text" name="smPort3" value="<?=$disk['smPort3']?>" class="option"><select name="smPort3" class="narrow" style="display:none" disabled></select><span id="devtext" class="devtext">/dev/</span>
+  <input type="text" name="smDevice" value="<?=$disk['smDevice']??''?>" class="option" placeholder="<?=htmlspecialchars($disk['device'])?>"><span id="helptext" class="helptext">enter disk index and device name as applicable to your controller</span>
+
+> By default automatic controller selection is done by smartctl to read the SMART information. Certain controllers however need specific settings for smartctl to work.
+> Use this setting to select your controller type and fill-in the specific disk index and device name for your situation. Use the manufacturer's documentation to find the relevant information.
+>
+> 每个磁盘可能都有自己的特定设置, 而不是 '默认' 设置 (请参阅 '磁盘设置' 下的 '全局 SMART 设置').
+
+SMART 属性通知:
+: <input type="text" name="smCustom" value="<?=$disk['smCustom']??$var['smCustom']?>" class="narrow">自定义属性 (使用逗号分隔数字)
+
+<?for ($x=0; $x < count($preselect); $x++):?>
+&nbsp;
+: <input type="checkbox" name="at<?=$x?>" value="<?=$preselect[$x]['code']?>"<?=in_array($preselect[$x]['code'],$events)?' checked':''?>><span class="code">Attribute = <?=$preselect[$x]['code']?></span><?=$preselect[$x]['text']?>
+<?endfor;?>
+
+> The user can enable or disable notifications for the given SMART attributes. It is recommended to keep the default, which is ALL selected attributes,
+> when certain attributes are not present on your hard disk or do not provide the correct information, these may be excluded.
+> In addition custom SMART attributes can be entered to generate notifications. Be careful in this selection,
+> it may cause an avalance of notifcations if inappropriate SMART attributes are chosen.
+>
+> 每个磁盘可能都有自己的特定设置, 而不是 '默认' 设置 (请参阅 '磁盘设置' 下的 '全局 SMART 设置').
+
+<input type="submit" name="#default" value="Default">
+: <input type="submit" name="#apply" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>

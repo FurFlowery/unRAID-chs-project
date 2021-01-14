@@ -1,0 +1,87 @@
+Menu="UNRAID-OS"
+Title="诊断"
+Icon="icon-diagnostics"
+Tag="tv"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$zip = htmlspecialchars(str_replace(' ','_',strtolower($var['NAME'])));
+?>
+<style>ul,li{margin:0;padding-top:0;padding-bottom:0;}</style>
+
+<script>
+function zipfile(){
+  var tzoffset = (new Date()).getTimezoneOffset() * 60000; //offset in milliseconds
+  var localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, -1);
+  return '<?=$zip?>-diagnostics-'+localISOTime.substr(0,16).replace(/[-:]/g,'').replace('T','-')+'.zip';
+}
+function cleanUp(file) {
+  if (document.hasFocus()) {
+    $('input[value="Downloading..."]').val('Download').prop('disabled',false);
+    $('div.spinner').hide('slow');
+    $('#pleaseWait').hide('slow');
+    $.post('/webGui/include/Download.php',{cmd:'delete',file:file});
+  } else {
+    setTimeout(function(){cleanUp(file);},2000);
+  }
+}
+function diagnostics(file) {
+  $('input[value="Download"]').val('Downloading...').prop('disabled',true);
+  $('div.spinner').show('slow');
+  $('#pleaseWait').show('slow');
+  var anonymize = $('#anonymize').is(':checked') ? '' : '-a';
+  $.post('/webGui/include/Download.php',{cmd:'diag',file:file,anonymize:anonymize},function(zip) {
+    location = zip;
+    setTimeout(function(){cleanUp(file);},4000);
+  });
+}
+</script>
+<div class="spinner" style="display:none"></div>
+<div id="pleaseWait" style="display:none;font-weight:bold;color:red;text-align:center;margin:0">请稍候... 正在收集诊断信息 (这可能需要几分钟)</div>
+This utility is used for troubleshooting purposes. It will collect all of the system information and configuration files, and package these files in a single ZIP file which can be saved locally.
+Subsequently, this file can be included in your correspondence with Limetech or the Unraid forum.
+
+This will help others to quickly get the inside information of your system and provide better support to your problem. The following information
+and configuration files are collected:
+
+<pre markdown="1">
++ */config*
+  <br>copy all *\*.cfg files*, *go* file and the *super.dat* file. These are configuration files.
++ */config/shares*
+  <br>copy all *\*.cfg* files. These are user share settings files.
++ *Syslog file(s)*
+  <br>copy the current *syslog* file and any previous existing *syslog* files.
++ *System*
+  <br>save output of the following commands:
+  <br>lsscsi, lspci, lsusb, free, lsof, ps, ethtool & ifconfig.
+  <br>display of iommu groups.
+  <br>display of command line parameters (e.g. pcie acs override, pci stubbing, etc).
+  <br>save system variables.
++ *SMART reports*
+  <br>save a SMART report of each individual disk present in your system.
++ *Docker*
+  <br>save files *docker.log*, *libvirtd.log* and *libvirt/qemu/\*.log*.
+</pre>
+
+Clicking **Download** will start the collection process and then instruct your browser to save the zip file locally.
+
+*No personal information such as user names, passwords, or any other file contents not specified above is included
+by Unraid OS; however, your server name, IP address, and user share names* **will** *be included.*
+
+*Note that 3rd-party plugins **may** or may not store personal information in plugin-specific configuration files and/or output
+to the system log.*
+
+*Use* **Anonymize diagnostics** *when publishing the diagnostics file in the public forum. In private communication with Limetech it is recommended to uncheck this setting and capture all information unaltered.*
+
+<input type="button" value="Download" onclick="diagnostics(zipfile())"><input type="button" value="完成" onclick="done()"><input type="checkbox" id="anonymize" checked>匿名诊断

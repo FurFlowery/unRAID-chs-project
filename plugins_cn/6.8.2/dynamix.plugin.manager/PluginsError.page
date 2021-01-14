@@ -1,0 +1,40 @@
+Menu="Plugins"
+Title="插件文件安装错误"
+Tag="puzzle-piece"
+Cond="glob('/boot/config/plugins-error/*.plg')"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+
+<?
+require_once "$docroot/plugins/dynamix.plugin.manager/include/PluginHelpers.php";
+
+echo "<table class='tablesorter' id='plugin_table'><thead>";
+echo "<tr><th>插件文件</th><th>状态</th></tr>";
+echo "</thead><tbody>";
+
+foreach (glob("/boot/config/plugins-error/*.plg", GLOB_NOSORT) as $plugin_file) {
+  // status info
+  $status_info = "ERROR<br />" . make_link("delete", $plugin_file);
+
+  echo "<tr>";
+  echo "<td>{$plugin_file}</td>";
+  echo "<td><span style=\"white-space:nowrap\">{$status_info}</span></td>";
+  echo "</tr>";
+}
+
+echo "</tbody></table>";
+?>
+
+> 由于某种安装错误, 未安装这些插件. 您应该删除这些插件
+> 然后 **重启** 您的服务器.

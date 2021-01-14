@@ -1,0 +1,312 @@
+Menu="Disk Share Flash"
+Title="SMB 安全设置"
+Tag="windows"
+Cond="(($var['shareSMBEnabled']!='no') && (isset($name)?array_key_exists($name,$sec):0))"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = [123,300];
+?>
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 SMB 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 SMB 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 SMB 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 SMB 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readsmb" size="1" class="clone" onchange="toggleButton('readsmb',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readsmb" value="读取" class="clone" onclick="readSMB()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="smb1" name="writesmb" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writesmb',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<可选>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writesmb" value="写入" class="clone" onclick="writeSMB()" disabled>
+</div>
+
+<form markdown="1" name="smb_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writesmb',true);$('#smb1').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+
+共享名称:
+: <span class="big"><?=htmlspecialchars($name)?></span>
+
+<?if (($name == 'flash')||($var['enableFruit']!='yes')):?>
+导出:
+: <select name="shareExport" size="1">
+  <?=mk_option($sec[$name]['export'], "-", "否");?>
+  <?=mk_option($sec[$name]['export'], "e", "是");?>
+  <?=mk_option($sec[$name]['export'], "eh", "是 (隐藏)");?>
+  </select>
+
+> 此设置决定共享是否可见和可访问. 如果选择 '是 (隐藏)' 
+> 那么将会在文件浏览器中隐藏这个共享, 但是如果你知道共享名称的话 任然可以访问.
+
+<input type="hidden" name="shareVolsizelimit" value="">
+<?else:?>
+导出:
+: <select name="shareExport" size="1" onchange="checkShareSettingsSMB(this.form)">
+  <?=mk_option($sec[$name]['export'], "-", "否");?>
+  <?=mk_option($sec[$name]['export'], "e", "是");?>
+  <?=mk_option($sec[$name]['export'], "eh", "是 (隐藏)");?>
+  <?=mk_option($sec[$name]['export'], "et", "是/Time Machine");?>
+  <?=mk_option($sec[$name]['export'], "eth", "是/Time Machine (隐藏)");?>
+  </select>
+
+> 此设置决定共享是否可见和可访问. 如果选择 '是 (隐藏)' 
+> 那么将会在文件浏览器中隐藏这个共享, 但是如果你知道共享名称的话 任然可以访问.
+
+Time Machine 卷大小限制:
+: <input type="text" name="shareVolsizelimit" maxlen="20" value="<?=$sec[$name]['volsizelimit']?>"> MB
+
+> 这将限制报告的卷大小, 从而阻止 Time Machine 使用整个磁盘空间进行备份.
+> 例如将此值设置为 "1024" 会将报告的磁盘空间限制为1GB.
+
+<?endif;?>
+安全:
+: <select name="shareSecurity" size="1">
+  <?=mk_option($sec[$name]['security'], "public", "公共");?>
+  <?=mk_option($sec[$name]['security'], "secure", "安全");?>
+  <?=mk_option($sec[$name]['security'], "private", "私有");?>
+  </select>
+
+> 安全模式摘要:
+>
+> **公共** 包含来宾用户内的所有用户具有完全 读/写 权限.
+>
+> **安全** 包含来宾用户内的所有用户具有只读权限, 你可以选择其中哪些用户
+> 具有写入权限.
+>
+> **私有** 所有来宾用户都没有访问权限, 你可以选择其中哪些用户具有 读/写 或
+> 只读访问权限.
+
+&nbsp;
+: <input type="submit" name="changeShareSecurity" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?if ($sec[$name]['security'] == 'secure'):?>
+<div id="title" class="nocontrol"><dt>SMB 用户访问</dt><i>来宾用户拥有 <b>只读</b> 权限.</i></div>
+
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 SMB 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 SMB 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 SMB 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 SMB 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readusersmb" size="1" class="clone" onchange="toggleButton('readusersmb',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='secure') echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='secure') echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readusersmb" value="读取" class="clone" onclick="readUserSMB()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="smb2" name="writeusersmb" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeusersmb',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='secure') $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='secure') $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<可选>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writeusersmb" value="写入" class="clone" onclick="writeUserSMB()" disabled>
+</div>
+
+<form markdown="1" name="smb_user_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writeusersmb',true);$('#smb2').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+<?input_secure_users($sec);?>
+
+&nbsp;
+: <input type="submit" name="changeShareAccess" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?elseif ($sec[$name]['security'] == 'private'):?>
+<div id="title" class="nocontrol"><dt>SMB 用户访问</dt><i>来宾用户 <b>没有</b> 权限访问.</i></div>
+
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 SMB 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 SMB 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 SMB 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 SMB 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readusersmb" size="1" class="clone" onchange="toggleButton('readusersmb',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='private') echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='private') echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readusersmb" value="读取" class="clone" onclick="readUserSMB()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="smb2" name="writeusersmb" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeusersmb',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='private') $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec[$list['name']]['security']=='private') $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<可选>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writeusersmb" value="写入" class="clone" onclick="writeUserSMB()" disabled>
+</div>
+
+<form markdown="1" name="smb_user_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writeusersmb',true);$('#smb2').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+<?input_private_users($sec);?>
+
+&nbsp;
+: <input type="submit" name="changeShareAccess" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+<?endif;?>
+
+<script>
+$(function() {
+  checkShareSettingsSMB(document.smb_edit);
+  initDropdownSMB(false);
+<?if ($tabbed):?>
+  $('#tab'+$('input[name$="tabs"]').length).bind({click:function(){initDropdownSMB(true);}});
+<?endif;?>
+<?if (count($users)==1):?>
+  toggleButton('readusersmb',true);
+  toggleButton('writeusersmb',true);
+  $('#smb2').dropdownchecklist('disable');
+<?endif;?>
+});
+function checkShareSettingsSMB(form) {
+  form.shareVolsizelimit.disabled = (form.shareExport.value.indexOf("et") == -1);
+}
+function initDropdownSMB(reset) {
+  if (reset) {
+    $('#smb1').dropdownchecklist('destroy');
+    $('#smb2').dropdownchecklist('destroy');
+  }
+  $("#smb1").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+  $("#smb2").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+}
+function readSMB() {
+  var form = document.smb_edit;
+  var name = $('select[name="readsmb"]').val();
+  $.get('/webGui/include/ProtocolData.php',{protocol:'smb',name:name},function(json) {
+    var data = $.parseJSON(json);
+    form.shareExport.value = data.export;
+    form.shareFruit.value = data.fruit;
+    form.shareSecurity.value = data.security;
+  });
+  $(form).find('select').trigger('change');
+}
+function writeSMB() {
+  var data = {}, copied = false;
+  data.shareExport = '<?=addslashes(htmlspecialchars($sec[$name]['export']))?>';
+  data.shareFruit = '<?=addslashes(htmlspecialchars($sec[$name]['fruit']))?>';
+  data.shareSecurity = '<?=addslashes(htmlspecialchars($sec[$name]['security']))?>';
+  data.changeShareSecurity = 'Apply';
+  $('select#smb1 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'SMB 安全设置已写入所选共享',type:'success'},function(){refresh();});
+}
+function readUserSMB() {
+  var form = document.smb_user_edit;
+  var name = $('select[name="readusersmb"]').val();
+  var users = {};
+<?
+  foreach ($users as $user) {
+    if ($user['name'] == "root") continue;
+    echo "users['{$user['name']}'] = {$user['idx']};\n";
+  }
+?>
+  $.get('/webGui/include/ProtocolData.php',{protocol:'smb',name:name},function(json) {
+    var data = $.parseJSON(json);
+    var readList = data.readList.split(',');
+    var writeList = data.writeList.split(',');
+    $(form).find('select[name^="userAccess."]').each(function(){$(this).val('no-access');});
+    for (var i=0; i < readList.length; i++) $(form).find('select[name="userAccess.'+users[readList[i]]+'"]').val('read-only');
+    for (var i=0; i < writeList.length; i++) $(form).find('select[name="userAccess.'+users[writeList[i]]+'"]').val('read-write');
+  });
+  $(form).find('select').trigger('change');
+}
+function writeUserSMB() {
+  var data = {}, copied = false;
+  data['userAccess.0'] = 'no-access';
+<?
+  $read_list = explode(",", $sec[$name]['readList']);
+  $write_list = explode(",", $sec[$name]['writeList']);
+  foreach ($users as $user) {
+    if ($user['name'] == "root") continue;
+    $idx = $user['idx'];
+    $userAccess = null;
+    if ($sec[$name]['security']=='secure') {
+      $userAccess = in_array($user['name'], $write_list) ? "read-write" : "read-only";
+    } elseif ($sec[$name]['security'] == 'private') {
+      $userAccess = in_array($user['name'], $write_list) ? "read-write" : (in_array($user['name'], $read_list) ? "read-only" : "no-access");
+    }
+    if ($userAccess) echo "  data['userAccess.$idx'] = '$userAccess';\n";
+  }
+?>
+  data.changeShareAccess = 'Apply';
+  $('select#smb2 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'SMB 用户访问权限设置已写入所选共享',type:'success'},function(){refresh();});
+}
+</script>

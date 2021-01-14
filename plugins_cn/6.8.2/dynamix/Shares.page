@@ -1,0 +1,11 @@
+Menu="Tasks:2"
+Type="xmenu"
+Code="e92a"
+----
+<?PHP
+if ($var['fsState']=="Stopped") {
+  echo "<p class='notice shift'>阵列必须为 <span class='strong big'>启动</span> 才能查看共享.</p>";
+  return;
+}
+if (count($pages)==2) $tabbed = false;
+?>

@@ -1,0 +1,45 @@
+Menu="CPUset:2"
+Title="CPU 绑定 Docker"
+Tag="icon-cpu"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+*/
+?>
+<?if ($dockerd):?>
+<form name="ct">
+<input type="hidden" name="names" id="names-ct" value="">
+<table class='tablesorter shift' style='width:auto'>
+<thead><tr><th><i class="fa fa-list"></i> 容器</th><?create()?></tr></thead>
+<tbody id="table-ct"><?=$spinner?></tbody>
+</table>
+<input type="button" value="Apply" onclick="apply(this.form)" disabled><input type="button" value="完成" onclick="done()"><span id="wait-ct" class="red-text" style="display:none"><i class="fa fa-spinner fa-spin"></i> 请稍候...</span>
+</form>
+<?else:?>
+<div class="notice">没有可用的 CPU 绑定. 必须先启动 Docker 服务</div>
+<?endif;?>
+
+> 该页面提供了 Docker 容器当前 CPU 绑定 分配的总视图.<br>
+> 它还允许修改这些分配.
+>
+> 正在运行的容器 '先停止'，然后在修改后重新启动. <br>
+> 当用户手动启动容器时, 立即修改停止的容器, 并激活新的分配.
+>
+> 当按下 ***应用***时, 将执行扫描以查找更改, 随后并行更改具有更改的容器.
+>
+> *重要提示: 请等到所有更新完成后再离开此页面*.
+>
+> 默认情况下, 没有为 Docker 容器选择任何核心, 这意味着它使用了所有可用的核心. <br>
+> 不要为容器选择 '全部' 核心, 如果您希望不受限制地使用核心, 请选择 '否'.
+>
+> Do not select cores for containers which are *isolated*.
+> By design a container will only use a single core (the lowest numbered core) when multiple isolated cores are selected.<br>
+> Usually this is not what a user wants when selecting multiple cores.

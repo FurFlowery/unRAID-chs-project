@@ -1,0 +1,39 @@
+Menu="WebGui"
+Title="变量"
+Icon="icon-vars"
+Tag="code"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?if ($display['resize']):?>
+<script>
+function resize() {
+  $('pre.up').height(Math.max(window.innerHeight-320,330)).show();
+}
+$(function() {
+  resize();
+  $(window).bind('resize',function(){resize();});
+});
+</script>
+<?endif;?>
+<?
+foreach ($site as &$page) $page['text'] = '...';
+$myPage['text'] = '...';
+$pages['Vars']['text'] = '...';
+$text = '...';
+ksort($site);
+ksort($GLOBALS);
+if (isset($GLOBALS['_SERVER']['PHP_AUTH_PW'])) $GLOBALS['_SERVER']['PHP_AUTH_PW'] = "***";
+echo ($display['resize'] ? "<pre class='up' style='display:none'>" : "<pre class='up'>").htmlspecialchars(print_r($GLOBALS,true))."</pre>";
+?>
+<input type="button" value="完成" onclick="done()">

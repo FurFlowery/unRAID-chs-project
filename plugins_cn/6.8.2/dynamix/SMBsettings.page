@@ -1,0 +1,91 @@
+Menu="SMB:1"
+Title="SMB 设置"
+Tag="windows"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<form markdown="1" name="SMBEnable" method="POST" action="/update.htm" target="progressFrame">
+
+启用 SMB:
+: <select name="shareSMBEnabled" size="1" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['shareSMBEnabled'], "no", "否")?>
+  <?=mk_option($var['shareSMBEnabled'], "yes", "是 (Workgroup)")?>
+  <?=mk_option($var['shareSMBEnabled'], "ads", "是 (Active Directory)")?>
+  </select>
+
+> 选择 '是(Workgroup)' 以启用 SMB (Windows 网络) 协议支持. 
+> 这还支持 Windows 主机发现.
+>
+> 选择 '是 (Active Directory)' 以启用活动目录集成.
+
+隐藏 'dot' 开头的文件:
+: <select name="hideDotFiles" size="1" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['hideDotFiles'], "no", "否");?>
+  <?=mk_option($var['hideDotFiles'], "yes", "是");?>
+  </select>
+
+> 如果设置为 '是', 则以 'dot' 开头的文件将显示为 *隐藏文件*, 并且通常不会显示在 
+> Windows 文件夹列表中. 除非在 Windows 文件夹选项中
+> 启用了 '显示隐藏文件, 文件夹和驱动器'.
+
+> 如果设置为 '否', 则以 'dot' 开头的文件将与其他文件一样显示在文件夹列表中.
+
+增强 macOS 兼容性:
+: <select name="enableFruit" size="1" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['enableFruit'], "no", "否");?>
+  <?=mk_option($var['enableFruit'], "yes", "是");?>
+  </select>
+
+> 设置为 '是' 时, 可增强与 Apple SMB 客户端的兼容性, 例如, 更快
+> Finder 浏览器以及导出 Time Machine 共享的功能. 但是, 这可能会导致 Windows 客户端出现一些问题.
+> 另请参阅 [VFS_FRUIT 手册页] (https://www.mankier.com/8/vfs_fruit).
+
+启用 NetBIOS:
+: <select name="USE_NETBIOS" size="1" class="narrow" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['USE_NETBIOS'], "no", "否")?>
+  <?=mk_option($var['USE_NETBIOS'], "yes", "是")?>
+  </select>
+
+> 选择 '是' 以启用 NetBIOS. 如果启用, 还将识别 SMBv1 协议. 如果禁用,
+> 客户端必须使用 SMBv2 或更高版本.
+
+启用 WSD:
+: <select name="USE_WSD" size="1" class="narrow" onchange="checkWSDSettings()" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['USE_WSD'], "no", "否")?>
+  <?=mk_option($var['USE_WSD'], "yes", "是")?>
+  </select>
+
+> 选择 '是' 以启用 WSD (WS-Discovery). 禁用此功能的唯一原因是您正在运行
+> 基于 SMBv1 的旧 LAN 设置.
+
+WSD 选项[实验性]:
+: <input type="text" name="WSD_OPT" maxlength="80" value="<?=htmlspecialchars($var['WSD_OPT'])?>" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+
+> 这是启动时传递给 WSD 守护进程命令行 otions 字符串. 请将此字段留空, 
+> 除非支持人员指示在此处放置内容.
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()"><?if ($var['fsState']=="Started"):?>阵列必须为 <span class="strong big">已停止</span> 才能更改<?endif;?>
+</form>
+
+<script>
+function checkWSDSettings() {
+  form=document.SMBEnable;
+  if (form.USE_WSD.value=="yes") {
+    form.WSD_OPT.disabled=false;
+  } else {
+    form.WSD_OPT.disabled=true;
+  }
+}
+$(checkWSDSettings);
+</script>

@@ -1,0 +1,105 @@
+Menu="UNRAID-OS"
+Title="新权限"
+Icon="icon-permissions"
+Tag="folder-o"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = [166,300];
+
+function data_disks($disk) {
+  return ($disk['type']=='Data' && $disk['status']=='DISK_OK');
+}
+?>
+<script>
+function setNewPerms(form) {
+  var dirs = '';
+  for (var i=1,item; item=form.includeDisk.options[i]; i++) {
+    if (item.selected) {
+      if (dirs.length) dirs += '|';
+      dirs += item.value;
+    }
+  }
+  for (var i=1,item; item=form.includeShare.options[i]; i++) {
+    if (item.selected) {
+      if (dirs.length) dirs += '|';
+      dirs += item.value;
+    }
+  }
+  if (dirs) swal({title:'继续?',text:'这将更新文件夹和文件权限',type:'warning',showCancelButton:true},function(){openBox('/webGui/scripts/newperms&arg1='+dirs,'New Permissions',490,430,true);});
+}
+$(function() {
+  $('#s1').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>, firstItemChecksAll:true, explicitClose:'...关闭'});
+  $('#s2').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>, firstItemChecksAll:true, explicitClose:'...关闭'});
+<?if ($var['fsState']!="Started"):?>
+  $('#s1').dropdownchecklist('disable');
+  $('#s2').dropdownchecklist('disable');
+<?endif;?>
+});
+</script>
+这是从 5.0 之前的 Unraid 服务器版本升级到 Unraid v5 或更高版本后必须执行的一次性操作.
+执行此一次性操作时, 请选择 **所有磁盘**.
+
+此实用程序还可用于在从 **Active Directory** 转换回 **非 Active Directory** 集成时
+还原文件和目录的默认所有权/权限.
+
+该实用程序启动一个后台进程, 该进程将转到每个数据磁盘和缓存磁盘以及选定的用户共享,
+并将文件和目录所有权更改为 *nobody/users* (即 uid/gid 设置为 99/100),
+并按如下方式设置权限: 
+~~~
+对于目录:
+  drwxrwxrwx
+
+对于读/写文件:
+  -rw-rw-rw-
+
+对于只读文件:
+  -r--r--r--
+~~~
+单击 **开始** 将打开另一个窗口并启动后台进程.
+
+在完成之前关闭窗口将终止后台进程 - 所以不要这样做. 如果您有许多文件, 此过程可能需要很长时间.
+
+请注意, 如果允许包含 appdata 共享, 此工具可能会对任何 Docker 容器产生负面影响.
+
+<form method="POST" action="/update.htm" target="progressFrame">
+<span style="display:inline-block;margin-top:8px">
+<span style="display:block;margin-bottom:4px;font-weight:bold">磁盘</span>
+<select id="s1" name="includeDisk" size="1" multiple="multiple" style="display:none">
+<option value=''>全部</option>
+<?if (isset($disks['cache'])):?>
+<option value='/mnt/cache'>缓存</option>
+<?endif;?>
+<?foreach (array_filter($disks,'data_disks') as $disk):?>
+<?=mk_option(1,"/mnt/{$disk['name']}",my_disk($disk['name']))?>
+<?endforeach;?>
+</select>
+</span>
+<span style="display:inline-block">
+<span style="display:block;margin-bottom:4px;font-weight:bold">用户共享</span>
+<select id="s2" name="includeShare" size="1" multiple="multiple" style="display:none">
+<option value=''>全部</option>
+<?uksort($shares,'strnatcasecmp');?>
+<?foreach ($shares as $share):?>
+<?=mk_option(1,"/mnt/user/{$share['name']}",$share['name'])?>
+<?endforeach;?>
+</select>
+</span>
+<br><br>
+<?if ($var['fsState']=="Started"):?>
+<input type="button" value="Start" onclick="setNewPerms(this.form)"><input type="button" value=" Done " onclick="done()">
+<?else:?>
+<input type="button" value="Start" disabled><input type="button" value=" Done " onclick="done()"> 阵列必须为 <span class="strong big">已启动</span> 才能更改权限.
+<?endif;?>
+</form>

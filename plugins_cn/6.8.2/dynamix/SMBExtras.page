@@ -1,0 +1,45 @@
+Menu="SMB:2"
+Title="SMB 附加"
+Cond="($var['shareSMBEnabled']!='no')"
+Tag="share-alt-square"
+---
+<?PHP
+/* Copyright 2018, Lime Technology
+ * Copyright 2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+> 使用此页面可以更改您的 `smb-extra.conf` 文件. Samba 将需要
+> 重新启动以使更改生效.
+
+<?
+$file = "/boot/config/smb-extra.conf";
+$text = @file_get_contents($file) ?: '';
+$text = preg_replace(["/\r\n/","/\r/"],"\n",$text);
+?>
+<script>
+$(function(){
+  $('form').find('textarea').on('input change',function(){
+    $(this).prop('rows',($(this).val().match(/\n/g)||[]).length+1);
+  });
+});
+</script>
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#include" value="/webGui/include/update.file.php">
+<input type="hidden" name="#file" value="<?=$file;?>">
+Samba 额外配置:
+: <textarea spellcheck="false" cols="80" rows="<?=substr_count($text,"\n")+1?>" maxlength="2048" name="text" style="resize:none;font-family:bitstream;width:65.5%" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>><?=htmlspecialchars($text)?></textarea>
+
+&nbsp;
+: <input type="submit" value="Apply" disabled><input type="button" value="完成" onclick="done()"><?if ($var['fsState']=="Started"):?>阵列必须为 <span class="strong big">已停止</span> 才能更改<?endif;?>
+
+> 单击 '应用' 按钮以提交当前编辑. 点击 **重置** 以
+> 撤消所做的任何更改 (在保存之前). 单击 '完成' 以退出此页面.
+
+</form>

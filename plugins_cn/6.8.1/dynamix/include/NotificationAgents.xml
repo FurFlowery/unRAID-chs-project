@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Agents>
+  <Agent>
+    <Name>Boxcar</Name>
+    <Variables>
+      <Variable Help="按照说明获取访问令牌 [a href='http://help.boxcar.io/knowledgebase/articles/314474-how-to-get-my-boxcar-access-token' target='_blank'][u]here[/u].[/a]" Desc="访问令牌" Default="">ACCESS_TOKEN</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      MESSAGE=$(echo -e "$MESSAGE")
+
+      curl -s -k \
+      -d "user_credentials=$ACCESS_TOKEN" \
+      -d "notification[title]=$TITLE" \
+      -d "notification[long_message]=$MESSAGE" \
+      -d "notification[source_name]=Unraid" \
+      -d "notification[sound]=bird-1" \
+      -d "notification[icon_url]=http://i.imgur.com/u63iSL1.png" \
+      https://new.boxcar.io/api/notifications 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Gotify</Name>
+    <Variables>
+      <Variable Help="完整的服务器 URL, 包括协议和端口. 例如: https://example.com:8888/" Desc="完整服务器 URL" Default="">SERVER_URL</Variable>
+      <Variable Help="该 App 令牌." Desc="App 令牌" Default="">APP_TOKEN</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      MESSAGE=$(echo -e "$MESSAGE")
+      case "$IMPORTANCE" in
+      'normal' )
+      PRIORITY="3"
+      ;;
+      'warning' )
+      PRIORITY="5"
+      ;;
+      'alert' )
+      PRIORITY="7"
+      ;;
+      esac
+
+      # Remove any trailing slash
+      SERVER_URL=${SERVER_URL%/}
+
+      curl -s -k -X POST \
+      -F "title=$TITLE" \
+      -F "message=$MESSAGE" \
+      -F "priority=$PRIORITY" \
+      ${SERVER_URL}/message?token=$APP_TOKEN 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Join</Name>
+    <Variables>
+      <Variable Help="在这里可以找到 API 密钥 [a href='https://joinjoaomgcd.appspot.com' target='_blank'] [u]here[/u].[/a]" Desc="API 密钥" Default="">API_KEY</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ##########
+      {0}
+      ##########
+      TITLE=$(echo -e "$TITLE")
+      MESSAGE=$(echo -e "$MESSAGE")
+
+      curl -s -k -G \
+      -d "apikey=$API_KEY" \
+      --data-urlencode "title=$TITLE" \
+      --data-urlencode "text=$MESSAGE" \
+      -d "deviceId=group.all" \
+      https://joinjoaomgcd.appspot.com/_ah/api/messaging/v1/sendPush 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Notify My Android</Name>
+    <Variables>
+      <Variable Help="在这里可以找到 API 密钥 [a href='https://www.notifymyandroid.com/account.jsp' target='_blank'] [u]here[/u].[/a]" Desc="API 密钥" Default="">API_KEY</Variable>
+      <Variable Help="应用名称, 例如, Unraid Server." Desc="应用名称" Default="Unraid Server">APP_NAME</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ##########
+      {0}
+      ##########
+      TITLE=$(echo -e "$TITLE")
+      MESSAGE=$(echo -e "$MESSAGE")
+
+      case "$IMPORTANCE" in
+      'normal' )
+      PRIORITY="0"
+      ;;
+      'warning' )
+      PRIORITY="1"
+      ;;
+      'alert' )
+      PRIORITY="2"
+      ;;
+      esac
+
+      curl -s -k \
+      -d "apikey=$API_KEY" \
+      -d "application=$APP_NAME" \
+      -d "event=$TITLE" \
+      -d "description=$MESSAGE" \
+      -d "priority=$PRIORITY" \
+      https://www.notifymyandroid.com/publicapi/notify 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Prowl</Name>
+    <Variables>
+      <Variable Help="按照说明获取 API 密钥 [a href='https://www.prowlapp.com/api_settings.php' target='_blank'][u]here[/u].[/a]" Desc="Api 密钥" Default="">API_KEY</Variable>
+      <Variable Help="应用名称, 例如, Unraid Server." Desc="应用名称" Default="Unraid Server">APP_NAME</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      TITLE=$(echo -e "$TITLE")
+      MESSAGE=$(echo -e "$MESSAGE")
+
+      case "$IMPORTANCE" in
+      'normal' )
+      PRIORITY="0"
+      ;;
+      'warning' )
+      PRIORITY="1"
+      ;;
+      'alert' )
+      PRIORITY="2"
+      ;;
+      esac
+
+      curl -s -k \
+      -F "apikey=$API_KEY" \
+      -F "application=$APP_NAME" \
+      -F "event=$TITLE" \
+      -F "description=$MESSAGE" \
+      -F "priority=$PRIORITY" \
+      https://api.prowlapp.com/publicapi/add 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Pushbullet</Name>
+    <Variables>
+      <Variable Help="按照说明获取访问令牌 [a href='https://www.pushbullet.com/account' target='_blank'] [u]here[/u].[/a]" Desc="访问令牌" Default="">TOKEN</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定包含在通知消息正文中的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ##########
+      {0}
+      ##########
+      MESSAGE=$(echo "$MESSAGE" | sed -e 's:<br[ /]*>:\\n:gI' -e 's/<[^>]*>//g')
+
+      curl -s -k \
+      -X POST --header "Authorization: Bearer $TOKEN" \
+      --header  'Content-Type: application/json' \
+      -d "{\"type\": \"note\", \"title\": \"$TITLE\", \"body\": \"$MESSAGE\"}" \
+      https://api.pushbullet.com/v2/pushes 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Pushover</Name>
+    <Variables>
+      <Variable Help="访问此处可以获取用户密钥 [a href='https://pushover.net/' target='_blank'][u]here[/u].[/a]" Desc="用户密钥" Default="">USER_KEY</Variable>
+      <Variable Help="访问此处可以获取 App 令牌 [a href='https://pushover.net/apps' target='_blank'][u]here[/u][/a]." Desc="App 令牌" Default="">APP_TOKEN</Variable>
+      <Variable Help="指定通知的消息正文中包含的字段." Desc="通知消息" Default="$SUBJECT,$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      MESSAGE=$(echo -e "$MESSAGE")
+      case "$IMPORTANCE" in
+      'normal' )
+      PRIORITY="-1"
+      ;;
+      'warning' )
+      PRIORITY="0"
+      ;;
+      'alert' )
+      PRIORITY="1"
+      ;;
+      esac
+
+      curl -s -k \
+      -F "token=$APP_TOKEN" \
+      -F "user=$USER_KEY" \
+      -F "message=$MESSAGE" \
+      -F "timestamp=$TIMESTAMP" \
+      -F "priority=$PRIORITY" \
+      -F "html=1" \
+      https://api.pushover.net/1/messages.json 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Slack</Name>
+    <Variables>
+      <Variable Help="按说明获取 WebHook [a href='https://api.slack.com/incoming-webhooks' target='_blank'][u]here[/u].[/a]" Desc="WebHook URL" Default="在这里使用您自己的 WEBHOOK 值">WEBH_URL</Variable>
+      <Variable Help="应用名称, 例如, Unraid Server." Desc="Application Name" Default="Unraid Server">APP_NAME</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定通知的消息正文中包含的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      TITLE=$(echo -e "$TITLE")
+      MESSAGE=$(echo -e "$MESSAGE")
+      curl -X POST --header 'Content-Type: application/json' \
+      -d "{\"username\": \"$APP_NAME\", \"text\": \"*$TITLE* \n $MESSAGE\"}" $WEBH_URL 2>&1
+      ]]>
+    </Script>
+  </Agent>
+  <Agent>
+    <Name>Telegram</Name>
+    <Variables>
+      <Variable Help="[a href='https://telegram.me/botfather' target='_blank'][u]BotFather[/u][/a] is the one bot to rule them all.[br][br]
+        1. 先使用 BotFather[br]
+        2. 在此字段中粘贴 Bot 令牌[br]
+        3. 通过 Telegram 向机器人发送消息 (通过直接消息或通过组发送消息)[br]
+        4. 测试这个机器人[br][br]
+        * 若要重置接收用户或组的通知, 请运行 [i]rm /boot/config/plugins/dynamix/telegram/chatid[/i] 在终端中重新运行步骤 3. 和 4.[/a]" Desc="机器人访问令牌" Default="">BOT_TOKEN</Variable>
+      <Variable Help="指定通知标题中包含的字段." Desc="通知标题" Default="$SUBJECT">TITLE</Variable>
+      <Variable Help="指定通知的消息正文中包含的字段." Desc="通知消息" Default="$DESCRIPTION">MESSAGE</Variable>
+    </Variables>
+    <Script>
+      <![CDATA[
+      #!/bin/bash
+      ############
+      {0}
+      ############
+      LEGACY=/boot/config/telegram
+      TELEGRAM=/boot/config/plugins/dynamix/telegram
+      STORED_TOKEN=$(< $TELEGRAM/token) || "";
+
+      # move legacy folder (if existing)
+      [[ -d $LEGACY && ! -d $TELEGRAM ]] && mv $LEGACY $TELEGRAM
+
+      if [[ ! -f $TELEGRAM/token || "$STORED_TOKEN" != "$BOT_TOKEN" ]]; then
+        mkdir -p $TELEGRAM;
+        echo $BOT_TOKEN > $TELEGRAM/token;
+      fi
+
+      if [[ ! -f $TELEGRAM/chatid || "$STORED_TOKEN" != "$BOT_TOKEN" ]]; then
+        mkdir -p $TELEGRAM;
+        LASTCHATID=$(curl -s https://api.telegram.org/bot$BOT_TOKEN/getUpdates | jq ".result | last .message .chat .id");
+        [[ $LASTCHATID =~ ^-*[0-9]+$ ]] && echo $LASTCHATID > $TELEGRAM/chatid || exit 1
+      fi
+
+      CHATID=$(< $TELEGRAM/chatid);
+      MESSAGE=$(echo -e "$(hostname): $TITLE\n$MESSAGE");
+      curl -G -s "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" --data-urlencode "chat_id=$CHATID" --data-urlencode "text=$MESSAGE" 2>&1;
+      ]]>
+    </Script>
+  </Agent>
+</Agents>

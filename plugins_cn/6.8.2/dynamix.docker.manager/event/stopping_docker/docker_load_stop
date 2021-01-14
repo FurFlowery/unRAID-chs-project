@@ -1,0 +1,7 @@
+#!/bin/bash
+# stop docker_load daemon
+DAEMON="docker_load"
+if [[ "$(pgrep $DAEMON)" != "" ]]; then
+  logger "Stopping $DAEMON"
+  pkill $DAEMON
+fi

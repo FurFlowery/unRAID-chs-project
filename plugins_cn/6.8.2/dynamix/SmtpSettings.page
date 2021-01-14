@@ -1,0 +1,190 @@
+Menu="Notifications:2"
+Title="SMTP 设置"
+Tag="envelope"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+require_once "$docroot/webGui/include/Encryption.php";
+
+$ssmtp['AuthPass'] = base64_decrypt($ssmtp['AuthPass']);
+$incomplete = strlen($ssmtp['root'])==0 || strlen($ssmtp['server'])==0 || strlen($ssmtp['port'])==0 || ((strlen($ssmtp['AuthUser'])==0 || strlen($ssmtp['AuthPass'])==0) && $ssmtp['AuthMethod']!='none');
+?>
+<script>
+var counter,pid;
+
+$(function() {
+  $('#testbutton').click(function(){
+    $('#testresult').html('Test running:<span class="orange">获取中 <span id="testcounter"></span>...</span>');
+    counter = 20;
+    mailtest();
+    $.get('/webGui/include/SMTPtest.php',function(data){clearTimeout(pid); $('#testresult').html(data)});
+  });
+  tls(document.smtp_setup);
+  pwd(document.smtp_setup);
+});
+function mailcheck(form) {
+  var email = /^\S+@\S+\.\S+/;
+  if (!email.test(form.root.value)) {
+    swal({title:"无效的 Email 地址",text:"请输入有效的 Email 地址",type:"error"});
+    return false;
+  }
+  return true;
+}
+function tls(form) {
+  form.TLSCert.disabled = form.UseTLSCert.selectedIndex==0;
+}
+function pwd(form) {
+  form.AuthUser.disabled = form.AuthMethod.selectedIndex==0;
+  form.AuthPass.disabled = form.AuthMethod.selectedIndex==0;
+}
+function mailtest() {
+  document.getElementById('testcounter').innerHTML = '('+counter+' sec)';
+  counter--;
+  if (counter>0) pid=setTimeout(mailtest,1000);
+}
+function disableTest() {
+  document.getElementById('testbutton').disabled = true;
+}
+function settings(form, data) {
+  var item = data.split(':');
+  form.server.value = item[0];
+  form.port.value = item[1];
+  form.UseTLS.value = item[2];
+  form.UseSTARTTLS.value = item[3];
+  form.AuthMethod.value = item[4];
+  disableTest();
+}
+</script>
+
+<form markdown="1" name="smtp_setup" method="POST" action="/update.php" target="progressFrame" onsubmit="return mailcheck(this)" onchange="disableTest()">
+<input type="hidden" name="#file"  value="dynamix/dynamix.cfg">
+<input type="hidden" name="#section" value="ssmtp">
+<input type="hidden" name="#include" value="/webGui/include/update.ssmtp.php">
+<input type="hidden" name="#command" value="/webGui/scripts/notify">
+<input type="hidden" name="#arg[1]" value="smtp-init">
+预设服务:
+: <select name="service" size="1" onchange="settings(this.form,this.value)">
+<?=mk_option($ssmtp['service'], "smtp.gmail.com:465:YES:NO:login", "Gmail")?>
+<?=mk_option($ssmtp['service'], "smtp.gmail.com:587:YES:YES:login", "Gmail 使用 TLS")?>
+<?=mk_option($ssmtp['service'], "smtp.live.com:587:YES:YES:login", "Outlook")?>
+<?=mk_option($ssmtp['service'], "smtp.live.com:465:YES:NO:login", "Hotmail")?>
+<?=mk_option($ssmtp['service'], "smtp.office365.com:587:YES:YES:login", "Office365")?>
+<?=mk_option($ssmtp['service'], "smtp.mail.yahoo.com:465:YES:NO:login", "Yahoo")?>
+<?=mk_option($ssmtp['service'], "plus.smtp.mail.yahoo.com:465:YES:NO:login", "Yahoo Plus")?>
+<?=mk_option($ssmtp['service'], "smtp.mail.yahoo.co.uk:465:YES:NO:login", "Yahoo UK")?>
+<?=mk_option($ssmtp['service'], "smtp.mail.yahoo.com.au:465:YES:NO:login", "Yahoo AU/NZ")?>
+<?=mk_option($ssmtp['service'], "smtp.o2.ie:25:NO:NO:login", "O2")?>
+<?=mk_option($ssmtp['service'], "smtp.o2.co.uk:25:NO:NO:login", "O2 UK")?>
+<?=mk_option($ssmtp['service'], "smtp.o2online.de:25:NO:NO:login", "O2 Online Deutschland")?>
+<?=mk_option($ssmtp['service'], "securesmtp.t-online.de:587:YES:YES:login", "T-Online Deutschland")?>
+<?=mk_option($ssmtp['service'], "smtp.1and1.com:587:YES:YES:login", "1&1")?>
+<?=mk_option($ssmtp['service'], "smtp.1und1.de:587:YES:YES:login", "1&1 Deutschland")?>
+<?=mk_option($ssmtp['service'], "smtp.att.yahoo.com:465:YES:NO:login", "AT&T")?>
+<?=mk_option($ssmtp['service'], "smtp.ntlworld.com:465:YES:NO:login", "NTL")?>
+<?=mk_option($ssmtp['service'], "mail.btopenworld.com:25:NO:NO:login", "BT Openworld")?>
+<?=mk_option($ssmtp['service'], "mail.btinternet.com:25:NO:NO:login", "BT Internet")?>
+<?=mk_option($ssmtp['service'], "smtp.comcast.net:465:YES:NO:login", "Comcast")?>
+<?=mk_option($ssmtp['service'], "outgoing.verizon.net:465:YES:NO:login", "Verizon")?>
+<?=mk_option($ssmtp['service'], "outgoing.yahoo.verizon.net:587:NO:NO:login", "Verizon (Yahoo hosted)")?>
+<?=mk_option($ssmtp['service'], "smtp.mail.com:465:YES:NO:login", "Mail.com")?>
+<?=mk_option($ssmtp['service'], "smtp.gmx.com:465:YES:NO:login", "GMX.com")?>
+<?=mk_option($ssmtp['service'], "smtp.zoho.com:465:YES:NO:login", "zoho Mail")?>
+<?=mk_option($ssmtp['service'], "::NO:NO:none", "自定义")?>
+</select>
+
+> 选择一个预设服务以设置基本服务设置.
+
+发送 Email 地址:
+: <input type="text" name="root" value="<?=htmlspecialchars($ssmtp['root'])?>">
+
+> 您的 Email 地址. 该地址用作通知的发送者.
+
+Email 收件人:
+: <input type="text" name="RcptTo" value="<?=htmlspecialchars($ssmtp['RcptTo'])?>">
+
+> 状态和错误通知的接收者. 指定一个或多个 Email 地址, 用空格分隔多个 Email 地址.
+
+标头中的优先级:
+: <select name="SetEmailPriority" size="1">
+  <?=mk_option($ssmtp['SetEmailPriority'], "False", "否")?>
+  <?=mk_option($ssmtp['SetEmailPriority'], "True", "是")?>
+  </select>
+
+> 当 unRaid 出现问题时, 请将电子邮件标头设置为高度重要.
+
+Email 主题前缀:
+: <input type="text" name="Subject" value="<?=htmlspecialchars($ssmtp['Subject'])?>">
+
+> 设置前缀以方便识别 unRaid 消息.
+
+Mail 服务器:
+: <input type="text" name="server" value="<?=htmlspecialchars($ssmtp['server'])?>">
+
+> 指定 Email 服务器. 使用预设服务选择来自动填写此内容.
+
+Mail 服务器端口:
+: <input type="text" name="port" class="narrow"  maxlength="5"  value="<?=htmlspecialchars($ssmtp['port'])?>">
+
+> 指定 Email 服务器的端口. 使用预设服务选择来自动填写此内容.
+
+使用 SSL/TLS:
+: <select name="UseTLS" size="1">
+  <?=mk_option($ssmtp['UseTLS'], "NO", "否")?>
+  <?=mk_option($ssmtp['UseTLS'], "YES", "是")?>
+  </select>
+
+> 指定是否使用 SSL/TLS与 SMTP 服务器连接.
+
+使用 STARTTLS:
+: <select name="UseSTARTTLS" size="1">
+  <?=mk_option($ssmtp['UseSTARTTLS'], "NO", "否")?>
+  <?=mk_option($ssmtp['UseSTARTTLS'], "YES", "是")?>
+  </select>
+
+> 指定在开始 SSL 协商之前是否使用 STARTTLS - 请参阅 RFC 2487.
+
+定义TLS证书:
+: <select name="UseTLSCert" size="1" onchange="tls(this.form)">
+  <?=mk_option($ssmtp['UseTLSCert'], "NO", "否")?>
+  <?=mk_option($ssmtp['UseTLSCert'], "YES", "是")?>
+  </select>
+
+> 仅当您具有通信所需的证书时才选择.
+
+TLS 证书位置:
+: <input type="text" name="TLSCert" value="<?=htmlspecialchars($ssmtp['TLSCert'])?>">
+
+> 用于 TLS 的 RSA 证书的文件名 - 根据需要来设置.
+
+认证方法:
+: <select name="AuthMethod" size="1" onchange="pwd(this.form)">
+  <?=mk_option($ssmtp['AuthMethod'], "none", "无")?>
+  <?=mk_option($ssmtp['AuthMethod'], "cram-md5", "CRAM-MD5")?>
+  <?=mk_option($ssmtp['AuthMethod'], "login", "登录")?>
+  </select>
+
+> 为您的 Email 服务器选择正确的身份验证方法. 使用测试来验证访问是否正常.
+
+用户名:
+: <input type="text" name="AuthUser" value="<?=htmlspecialchars($ssmtp['AuthUser'])?>">
+
+密码:
+: <input type="password" name="AuthPass" value="<?=htmlspecialchars($ssmtp['AuthPass'])?>">
+
+> 输入用户名和密码以登录到您的 Email 帐户. 请注意, 密码明文存储在电子邮件配置文件中.
+
+&nbsp;
+: <input type="submit" name="#apply" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+  <span id="testresult"><input type="button" id="testbutton" value="Test"<?if ($incomplete):?> disabled<?endif;?>></span>
+</form>

@@ -1,0 +1,52 @@
+Menu="SMB:3"
+Title="活动目录设置"
+Tag="list-ul"
+Cond="($var['shareSMBEnabled']=='ads')"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<form markdown="1" name="JoinOps" method="POST" action="/update.htm" target="progressFrame">
+AD 加入状态:
+: <?=$var['joinStatus'];?>&nbsp;
+
+AD 域名 (FQDN):
+: <input type="text" name="DOMAIN" maxlength="80" value="<?=htmlspecialchars($var['DOMAIN'])?>">
+
+AD 短域名:
+: <input type="text" name="DOMAIN_SHORT" maxlength="40" value="<?=htmlspecialchars($var['DOMAIN_SHORT'])?>">
+
+AD 登录账号:
+: <input type="text" name="DOMAIN_LOGIN" maxlength="40" value="<?=htmlspecialchars($var['DOMAIN_LOGIN'])?>">
+
+AD 登录密码:
+: <input type="password" name="DOMAIN_PASSWD" maxlength="40" value="<?=htmlspecialchars($var['DOMAIN_PASSWD'])?>">
+
+&nbsp;
+: <?if ($var['joinStatus']=="Joined"):?>
+  <input type="submit" name="cmdJoinDomain" value="Join" disabled><input type="submit" name="cmdLeaveDomain" value="Leave">
+  <?else:?>
+  <input type="submit" name="cmdJoinDomain" value="Join"><input type="submit" name="cmdLeaveDomain" value="Leave" disabled>
+  <?endif;?>
+</form>
+<br>
+
+<form markdown="1" name="shareOwnership" method="POST" action="/update.htm" target="progressFrame">
+AD 初始所有者:
+: <input type="text" name="shareInitialOwner" maxlength="40" value="<?=htmlspecialchars($var['shareInitialOwner'])?>">
+
+AD 初始组:
+: <input type="text" name="shareInitialGroup" maxlength="40" value="<?=htmlspecialchars($var['shareInitialGroup'])?>">
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>

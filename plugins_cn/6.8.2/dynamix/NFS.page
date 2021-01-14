@@ -1,0 +1,63 @@
+Menu="NetworkServices:2"
+Title="NFS"
+Icon="icon-linux"
+Tag="linux"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function checkNFSenable() {	
+  var form = document.nfs_enable;
+  form.fuse_remember.disabled = form.shareNFSEnabled.value=="no";	
+}
+$(checkNFSenable);
+</script>
+
+<form markdown="1" name="nfs_enable" method="POST" action="/update.htm" target="progressFrame">
+启用 NFS:
+: <select name="shareNFSEnabled" size="1" onchange="checkNFSenable()">
+  <?=mk_option($var['shareNFSEnabled'], "no", "否");?>
+  <?=mk_option($var['shareNFSEnabled'], "yes", "是");?>
+  </select>
+
+> 选择 '是' 以启用 NFS 协议.
+
+可调参数 (fuse_remember):
+: <input type="text" name="fuse_remember" maxlength="10" value="<?=$var['fuse_remember']?>" class="narrow"><?=$var['fuse_remember_status']?>
+
+> 当启用 NFS 时, 此可调参数可用于缓解或解决您可能遇到的 NFS 客户端 "NFS Stale File Handles" 的问题.
+>
+> 
+> 本质上, (fuse-member) 告诉内部子系统 (称为 "fuse") 要 "记住" 或 "缓存 与用户共享相关的文件和目录信息多长时间.
+> 当 NFS 客户机试图访问服务器上的文件 (或目录), 而该文件 (或目录) 名称未被缓存时, 您可能会遇到
+> "过时的文件句柄".
+>
+> 
+> 此可调参数的数值是缓存文件/目录名项的秒数,
+> 其中默认值 330 表示 5 1/2分钟. 有两个特殊值,
+> 您也可以将其设置为:
+> 
+> * 0 表示根本不缓存文件/目录名,
+> * -1 表示永远缓存文件/目录名 (或直到阵列停止)
+> 
+> 如果要启用NFS, 但只计划将其用于磁盘共享, 而不是用于用户共享, 
+> 则值 0 是比较合适的.
+> 
+> 如果没有其它超时似乎可以解决客户端上的 "过时文件句柄", 则值 -1 是合适的. 请注意,
+> 将值设置为 -1 将导致缓存的每个文件/目录名的内存占用增加大约 108 字节. 取决于服务器中安装了多少 RAM, 
+> 以及通过 NFS 访问了多少文件/目录, 这可能会或可能不会导致内存不足的情况.
+>
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>

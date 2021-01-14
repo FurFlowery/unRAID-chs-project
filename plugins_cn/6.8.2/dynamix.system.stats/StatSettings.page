@@ -1,0 +1,188 @@
+Menu="Utilities"
+Title="状态监测设置"
+Icon="area-chart"
+Tag="pie-chart"
+---
+<?PHP
+/* Copyright 2012-2020, Bergware International.
+ * Copyright 2012, Andrew Hamer-Adams, http://www.pixeleyes.co.nz.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$plugin = 'dynamix.system.stats';
+$translations = file_exists("$docroot/webGui/include/Translations.php");
+require_once "$docroot/plugins/$plugin/include/Legacy.php";
+?>
+<?if (!$translations):?>
+<?eval('?>'.parse_file("$docroot/plugins/$plugin/StatSettings.page"))?>
+<?else:?>
+<?
+$cfg = parse_plugin_cfg($plugin);
+extract(parse_ini_file('/etc/unraid-version'));
+
+unset($sPorts);
+exec("ifconfig -s|awk '/^(bond|eth)/{print $1}'",$sPorts);
+?>
+<script>
+function prepareStats(form) {
+  var show = '';
+  for (var i=1,item; item=form.show.options[i]; i++) {
+    if (item.selected) {
+      if (show.length) show += ',';
+      show += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.show.options[0];
+  item.value = show;
+  item.selected = true;
+}
+$(function(){
+  $('#s1').dropdownchecklist({emptyText:'None', width:166, firstItemChecksAll: true, explicitClose:'..._(close)_'});
+});
+</script>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame" onsubmit="prepareStats(this)">
+<input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
+_(系统状态入口位置)_:
+: <select name="stats">
+  <?=mk_option($cfg['stats'], "Tasks:90", _("顶部菜单"))?>
+  <?=mk_option($cfg['stats'], "SystemInformation", _("工具菜单"))?>
+  </select>
+
+_(首页)_:
+: <select name="first">
+  <?=mk_option($cfg['first'], "0", _("硬盘状态"))?>
+  <?=mk_option($cfg['first'], "1", _("系统状态"))?>
+  </select>
+
+_(磁盘利用率百分比位置)_:
+: <select name="text">
+  <?=mk_option($cfg['text'], "left", _("左侧"))?>
+  <?=mk_option($cfg['text'], "right", _("右侧"))?>
+  </select>
+
+:stats_utilization_plug:
+> 硬盘使用率百分比可以位于图表的开头(左侧)或结尾(右侧).
+>
+> 左侧将对齐所有数字，右侧将根据数值浮动.
+:end
+
+_(系统状态图表)_:
+: <select id="s1" name="show" multiple style="display:none">
+  <option value=''>(_(全部)_)</option>
+  <?=mk_option_check($cfg['show'], "cpu", _("处理器"))?>
+  <?=mk_option_check($cfg['show'], "ram", _("内存"))?>
+  <?=mk_option_check($cfg['show'], "com", _("网络"))?>
+  <?=mk_option_check($cfg['show'], "hdd", _("储存"))?>
+  </select>
+
+:stats_graphs_plug:
+> 选择需要显示的系统信息。不影响数据的采集.
+>
+> 此设置仅影响正在显示的内容.
+:end
+
+_(CPU 图表百分比)_:
+: <select name="cpu">
+  <?=mk_option($cfg['cpu'], "0", _("自动"))?>
+  <?=mk_option($cfg['cpu'], "100", _("固定"))?>
+  </select>
+
+:stats_scaling_plug:
+> 选择CPU图表的最高数值是自嗨还是固定 100%.
+:end
+
+_(每行多少个系统图形)_:
+: <select name="cols">
+  <?=mk_option($cfg['cols'], "0", _("1个"))?>
+  <?=mk_option($cfg['cols'], "1", _("2个"))?>
+  <?=mk_option($cfg['cols'], "2", _("3个"))?>
+  <?=mk_option($cfg['cols'], "3", _("4个"))?>
+  </select>
+
+:stats_view_plug:
+> 选择一行将会显示多少个图形。宽度会根据图形数量和排名分辨率自动调整.
+>
+> 图形生成以1分钟的间隔执行，此设置不会更改分辨率，只是更改图形的宽度.
+:end
+
+_(显示硬盘大小)_:
+: <select name="size">
+  <?=mk_option($cfg['size'], "0", _("否"))?>
+  <?=mk_option($cfg['size'], "1", _("是"))?>
+  </select>
+
+:stats_disk_size_plug:
+> 在硬盘使用情况图表的右侧显示每个硬盘的大小。大小总是使用可能的最高单位显示。
+:end
+
+_(网卡)_:
+: <select name="port">
+  <?foreach ($sPorts as $port):?>
+  <?=mk_option_check($cfg['port'], $port, $port)?>
+  <?endforeach;?>
+  </select>
+
+:stats_ethernet_plug:
+> 当存在多个网卡时，选择一个你想要显示的网卡，不影响其他网卡的数据采集.
+:end
+
+_(网络图表显示单位)_:
+: <select name="unit">
+  <?=mk_option($cfg['unit'], "b", _("Bits/s"))?>
+  <?=mk_option($cfg['unit'], "B", _("Bytes/s"))?>
+  </select>
+
+:stats_unit_plug:
+> 选择网络速率显示单位，通常使用Bits/s.
+:end
+
+_(初始图表模式)_:
+: <select name="graph">
+  <?=mk_option($cfg['graph'], "0", _("实时"))?>
+  <?=mk_option($cfg['graph'], "1", _("最近1天"))?>
+  <?=mk_option($cfg['graph'], "2", _("最近2天"))?>
+  <?=mk_option($cfg['graph'], "3", _("最近3天"))?>
+  <?=mk_option($cfg['graph'], "7", _("最近1周"))?>
+  <?=mk_option($cfg['graph'], "14", _("最近2周"))?>
+  <?=mk_option($cfg['graph'], "21", _("最近3周"))?>
+  <?=mk_option($cfg['graph'], "31", _("最近1月"))?>
+  <?=mk_option($cfg['graph'], "3653", _("自启动起"))?>
+  </select>
+
+:stats_initial_plug:
+> 系统信息图表可以自定义显示的周期，在这里设置初始周期，在系统信息页面可以更改为其他任何选项，此处仅为默认值.
+>
+> 系统信息采集到的数据将会保存一个月，每天都保存在一个单独的文件中.
+:end
+
+_(初始实时状态图表)_:
+: <select name="frame">
+  <?=mk_option($cfg['frame'], "15", _("30 秒"))?>
+  <?=mk_option($cfg['frame'], "30", _("1 分钟"))?>
+  <?=mk_option($cfg['frame'], "60", _("2 分钟"))?>
+  <?=mk_option($cfg['frame'], "150", _("5 分钟"))?>
+  <?=mk_option($cfg['frame'], "300", _("10 分钟"))?>
+  <?=mk_option($cfg['frame'], "900", _("30 分钟"))?>
+  <?=mk_option($cfg['frame'], "1800", _("1 小时"))?>
+  <?=mk_option($cfg['frame'], "3600", _("2 小时"))?>
+  </select>
+
+:stats_realtime_plug:
+> 实时图表是以滑动图表的方式显示的. 例如先绘制5分钟的数据，然后开始滑动显示最新实时的数据.
+>
+> 此设置是修改实时图表周期的默认值，可以在"系统信息"页面上更改.
+:end
+
+<input type="submit" name="#default" value="_(默认)_">
+: <input type="submit" name="#apply" value="_(应用)_"><input type="button" value="_(完成)_" onclick="done()">
+</form>
+<?endif;?>

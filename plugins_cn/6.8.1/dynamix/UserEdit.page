@@ -1,0 +1,266 @@
+Menu="UserList"
+Title="编辑用户"
+Tag="user"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+
+<?if (!array_key_exists($name, $users)):?>
+  <p class="notice">用户 <?=htmlspecialchars($name)?> 已删除.</p><br>
+  <input type="button" value="完成" onClick="done()">
+<?return;?>
+<?endif;?>
+
+<?
+$user = "/boot/config/plugins/dynamix/users/$name.png";
+$void = "<img src='/webGui/images/user.png' width='48' height='48' id='image' onclick='$(&quot;#drop&quot;).click()' style='cursor:pointer' title='点击选择 PNG 文件'>";
+$icon = "<i class='fa fa-trash top' title='恢复默认图像' onclick='restore()'></i>";
+?>
+
+<style>
+<?if ($display['theme']=='gray'):?>
+span#dropbox{border:1px solid #606E7F;border-radius:5px;background:#121510;padding:28px 12px;line-height:72px;margin-right:16px;}
+<?elseif ($display['theme']=='azure'):?>
+span#dropbox{border:1px solid #606E7F;border-radius:5px;background:#EDEAEF;padding:28px 12px;line-height:72px;margin-right:16px;}
+<?elseif ($display['theme']=='black'):?>
+span#dropbox{border:1px solid #f2f2f2;border-radius:5px;background:#262626;padding:28px 12px;line-height:72px;margin-right:16px;}
+<?else:?>
+span#dropbox{border:1px solid #1c1c1c;border-radius:5px;background:#e8e8e8;padding:28px 12px;line-height:72px;margin-right:16px;}
+<?endif;?>
+i.top{position:absolute;padding-top:4px;cursor:pointer;}
+</style>
+
+<script src="<?autov('/webGui/javascript/jquery.filedrop.js')?>"></script>
+<script src="<?autov('/webGui/javascript/jquery.base64.js')?>"></script>
+<script>
+var path = '/boot/config/plugins/dynamix/users';
+var filename = '';
+
+function checkPassword(form) {
+  if (form.userPassword.value.length > 128 || form.userPasswordConf.value.length > 128) {
+    swal({title:"密码太长",text:"使用最多 128 个字符的密码",type:"error"});
+    return false;
+  }
+  form.userPassword.value = base64(form.userPassword.value);
+  form.userPasswordConf.value = base64(form.userPasswordConf.value);
+  return true;
+}
+
+function restore() {
+  // restore original image and activate APPLY button
+  $('#dropbox').html("<?=$void?>");
+  $('input[name="userDesc"]').trigger('change');
+  filename = 'reset';
+}
+
+function upload(remove) {
+  // save or delete upload when APPLY is pressed
+  if (remove || filename=='reset') {
+    $.post("/webGui/include/FileUpload.php",{cmd:'delete',path:path,filename:'<?=addslashes(htmlspecialchars($name))?>.png'});
+  } else if (filename) {
+    $.post("/webGui/include/FileUpload.php",{cmd:'save',path:path,filename:filename,output:'<?=addslashes(htmlspecialchars($name))?>.png'});
+  }
+}
+
+$(function(){
+  var dropbox = $('#dropbox');
+  // attach the drag-n-drop feature to the 'dropbox' element
+  dropbox.filedrop({
+    maxfiles:1,
+    maxfilesize:512, // KB
+    url:'/webGui/include/FileUpload.php',
+    data:{"csrf_token":"<?=$var['csrf_token']?>"},
+    beforeEach:function(file) {
+      if (!file.type.match(/^image\/png/)) {
+        swal({title:"警告",text:"只允许使用 PNG 图像!",type:"warning"});
+        return false;
+      }
+    },
+    error: function(error, file, i) {
+      switch (error) {
+      case 'BrowserNotSupported':
+        swal({title:"浏览器错误",text:"您的浏览器不支持 HTML5 文件上传!",type:"error"});
+        break;
+      case 'TooManyFiles':
+        swal({title:"文件太多",text:"请仅选择一个文件!",type:"error"});
+        break;
+      case 'FileTooLarge':
+        swal({title:"文件太大",text:"最大文件上传大小为 512 kB (524,288 bytes)",type:"error"});
+        break;
+      }
+    },
+    uploadStarted:function(i,file,count) {
+      var image = $('img', $(dropbox));
+      var reader = new FileReader();
+      image.width = 48;
+      image.height = 48;
+      reader.onload = function(e){image.attr('src',e.target.result);};
+      reader.readAsDataURL(file);
+    },
+    uploadFinished:function(i,file,response) {
+      if (response == 'OK 200') {
+        if (!filename || filename=='reset') $(dropbox).append("<?=$icon?>");
+        $('input[name="userDesc"]').trigger('change');
+        filename = file.name;
+      } else {
+        swal({title:"上传错误",text:response,type:"error"});
+      }
+    }
+  });
+  // simulate a drop action when manual file selection is done
+  $('#drop').bind('change', function(e) {
+    var files = e.target.files;
+    if ($('#dropbox').triggerHandler({type:'drop',dataTransfer:{files:files}})==false) e.stopImmediatePropagation();
+  });
+});
+</script>
+<div class="spinner fixed"></div>
+<form markdown="1" method="POST" action="/update.htm" target="progressFrame" onsubmit="upload(<?=$name=="root" ? 'false' : 'this.confirmDelete.checked'?>)">
+<input type="hidden" name="userName" value="<?=htmlspecialchars($name)?>">
+用户名:
+: <?=htmlspecialchars($name)?>
+
+描述:
+: <input type="text" name="userDesc" maxlength="64" value="<?=htmlspecialchars($users[$name]['desc'])?>" pattern='[^&:"]*'>
+
+> 最多 64 个字符. 不允许使用字符 aampand (&amp;) 引号 (&quot;) 和冒号 (:).
+
+自定义图片:
+: <span id="dropbox">
+<?if (file_exists($user)):?>
+  <img src="<?=autov($user)?>" id="image" width="48" height="48" onclick="$('#drop').click()" style="cursor:pointer" title="点击选择 PNG 文件"><?=$icon?>
+<?else:?>
+  <?=$void?>
+<?endif;?>
+  </span><em>拖放 PNG 文件或单击左侧的图像.</em><input type="file" id="drop" accept=".png" style="display:none">
+
+> 图像将被缩放 48x48 像素. 图片文件的最大上传大小为 512 kB (524,288 字节).
+
+<?if ($name=="root"):?>
+&nbsp;
+<?else:?>
+删除<input type="checkbox" name="confirmDelete" onChange="chkDelete(this.form, this.form.cmdUserEdit)">
+<?endif;?>
+: <input type="submit" name="cmdUserEdit" value="Apply" disabled><input type="button" value="完成" onclick="done('UserEdit')">
+</form>
+<br><br>
+<form markdown="1" method="POST" action="/update.htm" target="progressFrame" onsubmit="return checkPassword(this)">
+<input type="hidden" name="userName" value="<?=htmlspecialchars($name)?>">
+密码:
+: <input type="password" name="userPassword" maxlength="129" onKeyUp="this.form.cmdUserEdit.disabled=(this.form.userPassword.value != this.form.userPasswordConf.value);">
+
+> 最多 128 个字符.
+
+重新输入密码:
+: <input type="password" name="userPasswordConf" maxlength="129" onKeyUp="this.form.cmdUserEdit.disabled=(this.form.userPassword.value != this.form.userPasswordConf.value);">
+
+&nbsp;
+: <input type="submit" name="cmdUserEdit" value="Change" disabled><input type="button" value="完成" onclick="done('UserEdit')">
+</form>
+
+<?if ($name != 'root' && $var['shareSMBEnabled'] != 'no'):?>
+<script>
+var users = {};
+var security = {};
+var readList = {};
+var writeList = {};
+<?
+$rw = 'read-write';
+$ro = 'read-only';
+$no = 'no-access';
+foreach ($users as $user) {
+  $idx = $user['idx'];
+  if ($idx) echo "users[\"{$user['name']}\"]='$idx';\n";
+}
+foreach ($shares as $share => $data) {
+  echo "security[\"$share\"]=\"{$sec[$share]['security']}\";\n";
+  echo "readList[\"$share\"]=\"{$sec[$share]['readList']}\";\n";
+  echo "writeList[\"$share\"]=\"{$sec[$share]['writeList']}\";\n";
+}
+?>
+function updateAccess(form,data,n,i) {
+  var name = "<?=$name?>";
+  if (data) {
+    if (n<i) {
+      $.post('/update.htm',data[n], function(){setTimeout(function(){updateAccess(form,data,++n,i);},3000);});
+    } else {
+      $('div.spinner').html(unraid_logo).hide();
+      $('input[value="Reset"]').val('Done').prop('disabled',false).prop('onclick',null).off('click').click(function(){done('UserEdit');});
+    }
+  } else {
+    var data = [];
+    var i = 0;
+    $(form).find('select').each(function(){
+      if ($(this).prop('id')) {
+        var share = decodeURI($(this).prop('id'));
+        var read = readList[share].split(',');
+        var write = writeList[share].split(',');
+        var access = '';
+        data[i] = {};
+        data[i]['shareName'] = share;
+        data[i]['userAccess.0'] = '<?=$no?>';
+        for (var user in users) {
+          var idx = users[user];
+          switch (security[share]) {
+          case 'public':
+            access = '<?=$rw?>';
+            break;
+          case 'secure':
+            if (user == name) access = $(this).val();
+            else access = write.includes(user) ? '<?=$rw?>' : '<?=$ro?>';
+            break;
+          case 'private':
+            if (user == name) access = $(this).val();
+            else access = write.includes(user) ? '<?=$rw?>' : (read.includes(user) ? '<?=$ro?>' : '<?=$no?>');
+            break;
+          }
+          data[i]['userAccess.'+idx] = access;
+        }
+        data[i]['changeShareAccess'] = 'Apply';
+        i++;
+      }
+    });
+    $(form).find('input').prop('disabled',true);
+    $('div.spinner').html(unraid_logo).show();
+    updateAccess(form,data,0,i);
+  }
+}
+</script>
+<form markdown="1" method="POST">
+<?
+echo "<table class='share_status' style='margin-top:20px'>";
+echo "<thead><tr><td>共享</td><td>安全</td><td>用户访问</td></tr></thead>";
+echo "<tbody>";
+foreach ($shares as $share => $data) {
+  if ($sec[$share]['export']=='-') continue;
+  $security = $sec[$share]['security'];
+  $read = in_array($name,explode(',',$sec[$share]['readList']));
+  $write = in_array($name,explode(',',$sec[$share]['writeList']));
+  switch ($security) {
+  case 'public' : $access = $rw; break;
+  case 'secure' : $access = $write ? $rw : $ro; break;
+  case 'private': $access = $write ? $rw : ($read ? $ro : $no); break;}
+  echo "<tr><td>$share</td><td>$security</td><td><select onchange='$(this).prop(\"id\",\"".rawurlencode($share)."\")'>";
+  echo mk_option($access,$rw,'读/写');
+  if ($security!='public') echo mk_option($access,$ro,'只读');
+  if ($security=='private') echo mk_option($access,$no,'无权限');
+  echo "</select></td></tr>";
+}
+echo "</tbody>";
+echo "</table>";
+?>
+
+&nbsp;
+: <input type="button" value="Apply" onclick="updateAccess(this.form)" disabled><input type="button" value="完成" onclick="done('UserEdit')">
+</form>
+<?endif;?>

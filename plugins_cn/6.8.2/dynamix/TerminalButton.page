@@ -1,0 +1,32 @@
+Menu="Buttons:2"
+Title="终端"
+Icon="icon-u-terminal"
+Href="/webterminal/"
+Code="e93f"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function TerminalButton() {
+  if (/MSIE|Edge/.test(navigator.userAgent)) {
+    swal({title:'不支持的功能',text:'对不起, 该功能不支持 MSIE/Edge.<br>请更换其它浏览器',html:true,type:'error'});
+    return;
+  }
+  var d = new Date();
+  var height = 600;
+  var width = 900;
+  var top = (screen.height-height)/2;
+  var left = (screen.width-width)/2;
+  window.open('/webterminal/', 'Web Terminal '+d.getTime(), 'resizeable=yes,scrollbars=yes,height='+height+',width='+width+',top='+top+',left='+left).focus();
+}
+</script>

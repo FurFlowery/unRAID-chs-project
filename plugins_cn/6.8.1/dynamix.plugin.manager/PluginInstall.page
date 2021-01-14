@@ -1,0 +1,36 @@
+Menu="Plugins"
+Title="安装插件"
+Tag="download"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function installPlugin(name) {
+  var file = name.trim();
+  var plugin = file.replace(/^.*(\\|\/|\:)/,'').replace('.plg','')+':install';
+  if (file) openBox('/plugins/dynamix.plugin.manager/scripts/plugin&arg1=install&arg2='+file,'安装插件',600,900,true,'loadlist',plugin);
+}
+</script>
+**输入远程插件文件 URL 或本地插件文件**
+
+<form name="plugin_install" method="POST" target="progressFrame">
+<input type="text" name="file" id="plugin_file" maxlength="1024" value="" style="width:33%">
+<input type="button" value="Install" onclick="installPlugin(this.form.file.value)">
+</form>
+
+> 要下载并安装插件, 请输入 plg 文件的 URL, 然后单击 **安装**. 将会打开一个窗口
+> 显示安装进度. 在安装完成之前, 请勿关闭此窗口. 您也可以指定
+> 本地插件的文件名.
+
+**选择本地插件文件**
+<div id="plugin_tree" class="textarea"></div>

@@ -1,0 +1,194 @@
+Menu="Scheduler:1"
+Title="奇偶校验"
+Tag="calendar"
+---
+<?PHP
+/* Copyright 2012-2018, Bergware International.
+ * Copyright 2005-2018, Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+if ($disks['parity']['status']=='DISK_NP_DSBL' && $disks['parity2']['status']=='DISK_NP_DSBL') {
+  echo "<p class='notice'>当前没有奇偶校验的磁盘!</p>";
+}
+$width  = [166,300];
+$mode   = ['禁用','日计划','周计划','月计划','年计划','自定义'];
+$days   = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+$months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+$memory = '/tmp/memory.tmp';
+if (file_exists($memory)) {
+  parse_str(file_get_contents($memory), $parity);
+  if (empty($parity['hour'])) $parity['hour'] = "";
+  if (empty($parity['day'])) $parity['day'] = "";
+  if (empty($parity['dotm'])) $parity['dotm'] = "";
+  if (empty($parity['month'])) $parity['month'] = "";
+  if (empty($parity['write'])) $parity['write'] = "";
+}
+?>
+<script>
+<?if ($parity['mode']==5):?>
+$(function() {
+  $("#s1").dropdownchecklist({emptyText:'每天', width:<?=$width[0]?>, explicitClose:'...关闭'});
+  $("#s2").dropdownchecklist({emptyText:'每月', width:<?=$width[0]?>, explicitClose:'...关闭'});
+});
+// Simulate a single input field
+function prepareParity(form) {
+  var days = '';
+  for (var i=0,item; item=form.day.options[i]; i++) {
+    if (item.selected) {
+      if (days.length) days += ',';
+      days += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.day.options[0];
+  item.value = days || '*';
+  item.selected = true;
+  var months = '';
+  for (var i=0,item; item=form.month.options[i]; i++) {
+    if (item.selected) {
+      if (months.length) months += ',';
+      months += item.value;
+      item.selected = false;
+    }
+  }
+  item = form.month.options[0];
+  item.value = months || '*';
+  item.selected = true;
+}
+<?else:?>
+function prepareParity(form) {
+// do nothing
+}
+<?endif;?>
+$(function() {
+<?if (file_exists($memory)):?>
+  setTimeout(function(){$('input[value="Apply"]').removeAttr('disabled');},0);
+  $('input[value="Done"]').val('Reset').prop('onclick',null).click(function(){refresh($(this).parentsUntil('form').parent().offset().top)});
+<?unlink($memory);?>
+<?endif;?>
+  presetParity(document.parity_settings);
+});
+function presetParity(form) {
+  var mode = form.mode.value;
+  form.day.disabled = mode!=2 && mode!=5;
+  form.dotm.disabled = mode<3;
+  form.hour.disabled = mode==0;
+  form.month.disabled = mode<4;
+  form.write.disabled = mode==0;
+}
+</script>
+<form markdown="1" name="parity_settings" method="POST" action="/update.php" target="progressFrame" onsubmit="prepareParity(this)">
+<input type="hidden" name="#file" value="dynamix/dynamix.cfg"/>
+<input type="hidden" name="#section" value="parity"/>
+<input type="hidden" name="#include" value="/webGui/include/update.parity.php"/>
+计划的奇偶校验:
+: <select name="mode" size="1" onchange="submit()">
+  <?for ($m=0; $m<count($mode); $m++):?>
+  <?=mk_option($parity['mode'], strval($m), $mode[$m])?>
+  <?endfor;?>
+  </select>
+
+> 默认情况下, 不安排奇偶校验检查. 在此处选择所需的时间表. 这可以是每日, 每周, 每月, 每年或自定义计划的预设计划之一.
+
+周计划:
+<?if ($parity['mode']==2):?>
+: <select name="day" size="1">
+  <?for ($d=0; $d<count($days); $d++):?>
+  <?=mk_option($parity['day'], strval($d), $days[$d])?>
+  <?endfor;?>
+<?elseif ($parity['mode']==5):?>
+: <select id="s1" name="day" size="1" multiple="multiple" style="display:none">
+  <?for ($d=0; $d<count($days); $d++):?>
+  <?=mk_option_check($parity['day'], strval($d), $days[$d])?>
+  <?endfor;?>
+<?else:?>
+: <select name="day" size="1">
+  <?=mk_option($parity['day'], "*", "--------")?>
+<?endif;?>
+  </select>
+
+> 如果选择了 '每周' 或 '自定义' 时间表, 请在此处选择首选的 '星期几', 在其他时间表中, 此设置将不使用且不可用.
+
+<?if ($parity['mode']<5):?>
+月计划:
+<?else:?>
+扩展:
+<?endif;?>
+: <select name="dotm" size="1">
+<?if ($parity['mode']>=3):?>
+<?if ($parity['mode']==5):?>
+  <?=mk_option($parity['dotm'], "*", "每周")?>
+  <?=mk_option($parity['dotm'], "W1", "第一周")?>
+  <?=mk_option($parity['dotm'], "W2", "第二周")?>
+  <?=mk_option($parity['dotm'], "W3", "第三周")?>
+  <?=mk_option($parity['dotm'], "W4", "第四周")?>
+  <?=mk_option($parity['dotm'], "WL", "最后周")?>
+<?else:?>
+  <?=mk_option($parity['dotm'], "1", "第一天")?>
+  <?=mk_option($parity['dotm'], "28-31", "最后一天")?>
+  <?for ($d=2; $d<=31; $d++):?>
+  <?=mk_option($parity['dotm'], strval($d), sprintf("%02d", $d))?>
+  <?endfor;?>
+<?endif;?>
+<?else:?>
+  <?=mk_option($parity['dotm'], "*", "--------")?>
+<?endif;?>
+  </select>
+
+> 当选择 **月** 或 **年** 计划时, 请在此选择首选的*月计划*.
+> 当选择 **自定义** 计划时, 请在此选择首选的 *周计划*, 在其他计划中, 此设置不可用.
+
+日计划:
+: <select name="hour" size="1">
+<?if ($parity['mode']>0):?>
+  <?for ($h=0; $h<24; $h++):?>
+  <?=mk_option($parity['hour'], sprintf("0 %d", $h), sprintf("%02d:00", $h))?>
+  <?=mk_option($parity['hour'], sprintf("30 %d",$h), sprintf("%02d:30", $h))?>
+  <?endfor;?>
+<?else:?>
+  <?=mk_option($parity['hour'], "*", "--------")?>
+<?endif;?>
+  </select>
+
+> 选择所需的参数开始计划. 时间以半小时为单位.
+
+年计划:
+<?if ($parity['mode']>=4):?>
+<?if ($parity['mode']==5):?>
+: <select id="s2" name="month" size="1" multiple="multiple" style="display:none">
+  <?for ($m=0; $m<count($months); $m++):?>
+  <?=mk_option_check($parity['month'], strval($m+1), $months[$m])?>
+  <?endfor;?>
+<?else:?>
+: <select name="month" size="1">
+  <?for ($m=0; $m<count($months); $m++):?>
+  <?=mk_option($parity['month'], strval($m+1), $months[$m])?>
+  <?endfor;?>
+<?endif;?>
+<?else:?>
+: <select name="month" size="1">
+  <?=mk_option($parity['month'], "*", "--------")?>
+<?endif;?>
+  </select>
+
+> 当选择 **年** 或 **自定义** 计划时, 请在此选择首选的 *一年中的月份*, 在其他计划中, 此设置不可用.
+
+将更正写入奇偶校验磁盘:
+: <select name="write" size="1">
+  <?=mk_option($parity['write'], "", "是")?>
+  <?=mk_option($parity['write'], "NOCORRECT", "否")?>
+  </select>
+
+> 在此选择是否需要在奇偶磁盘上更正检查期间发现的任何奇偶校验错误.
+
+&nbsp;
+: <input type="submit" name="#apply" value="Apply" disabled><input type="button" value="完成" onclick="done()"></td>
+</form>

@@ -1,0 +1,43 @@
+Menu="Main:3"
+Title="启动设备"
+Tag="paw"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function boot_status() {
+  $.post('/webGui/include/DeviceList.php',{path:'<?=$path?>',device:'flash'},function(data) {
+    if (data) {$('#boot_device').html(data); display_diskio();}
+<?if ($var['fsState']=='Started'):?>
+    timers.boot_status = setTimeout(boot_status,3000);
+<?endif;?>
+  });
+}
+<?if ($var['fsState']=='Started'):?>
+$('#tab3').bind({click:function() {$('i.toggle').show('slow');}});
+<?endif;?>
+
+boot_status();
+</script>
+
+<table class="disk_status wide">
+<thead><tr><td>设备</td><td>识别号</td><td>温度</td><td>读取</td><td>写入</td><td>错误</td><td>文件系统</td><td>大小</td><td>已使用</td><td>剩余</td><td>查看</td></tr></thead>
+<tbody id="boot_device">
+<?if (isset($disks['flash'])) echo "<tr><td colspan='11'>&nbsp;</td></tr>";?>
+</tbody>
+</table>
+
+> 重要的阵列配置在 USB 闪存设备上维护; 因此, 它必须保持
+> 插入在服务器上.  点击 [Flash](/Main/Flash?name=flash) 查看 GUID 和
+> 注册信息, 并配置导出设置.  由于 USB 闪存设备是使用 FAT 文件系统格式化的,
+> 它只能使用 SMB 协议导出.

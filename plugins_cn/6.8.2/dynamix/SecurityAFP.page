@@ -1,0 +1,328 @@
+Menu="Disk Share"
+Title="AFP 安全设置"
+Tag="apple"
+Cond="(($var['shareAFPEnabled']!='no') && (isset($name)?array_key_exists($name,$sec_afp):0))"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = [123,300];
+?>
+> 此部分用于在使用 AFP 访问共享时配置共享的安全设置，并且仅当在
+> '网络服务' 页上启用 AFP 时才会显示.
+>
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 AFP 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 AFP 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 AFP 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 AFP 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readafp" size="1" class="clone" onchange="toggleButton('readafp',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readafp" value="Read" class="clone" onclick="readAFP()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="afp1" name="writeafp" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeafp',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<option>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writeafp" value="Write" class="clone" onclick="writeAFP()" disabled>
+</div>
+
+<form markdown="1" name="afp_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writeafp',true);$('#afp1').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+
+共享名称:
+: <span class="big"><?=htmlspecialchars($name)?></span>
+
+导出:
+: <select name="shareExportAFP" size="1" onchange="checkShareSettingsAFP(this.form)">
+  <?=mk_option($sec_afp[$name]['export'], "-", "否");?>
+  <?=mk_option($sec_afp[$name]['export'], "e", "是");?>
+  <?=mk_option($sec_afp[$name]['export'], "et", "是 (Time Machine)");?>
+  </select>
+
+> 这里是导出设置, 确定是否通过 AFP 导出此共享 (是或否)
+> 导出设置还包括第三个选项 (是 Time Machine). 此设置启用 Time Machine 的各种特殊选项;
+> 特别是 "卷大小限制". 
+> 注意: 由于使用锁的方式, 苹果建议除了 Time Machine 之外, 
+> 其他地方不要使用该卷.
+
+Time Machine 卷大小限制:
+: <input type="text" name="shareVolsizelimitAFP" maxlen="20" value="<?=$sec_afp[$name]['volsizelimit']?>"> MB
+
+> 这将限制报告的卷大小, 从而阻止 Time Machine 使用整个磁盘空间进行备份.
+> 例如将此值设置为 "1024" 会将报告的磁盘空间限制为1GB.
+
+卷 dbpath:
+: <input type="text" name="shareVoldbpathAFP" maxlen="20" value="<?=htmlspecialchars($sec_afp[$name]['voldbpath'])?>">
+
+> 设置 NetTalk 数据库信息的存储位置.
+> 将在此处创建与共享同名的目录.
+>
+> 将此字段留空, 以便在共享的根目录中创建数据库.
+
+安全:
+: <select name="shareSecurityAFP" size="1">
+  <?=mk_option($sec_afp[$name]['security'], "public", "公开");?>
+  <?=mk_option($sec_afp[$name]['security'], "secure", "安全");?>
+  <?=mk_option($sec_afp[$name]['security'], "private", "私有");?>
+  </select>
+
+> Unraid AFP 支持实现来宾访问并完全支持三种安全性
+> 模式: 公开, 安全, 和 私有.
+> 通常, 当您在 Finder 中单击服务器图标时, 系统会要求您以来宾身份登录或
+> 指定一组登录凭据 (用户名/密码). 要在共享上使用安全或私有共享,
+> 必须在服务器上定义了具有适当访问权限的用户.
+>
+> 注意: NetTalk 不允许将用户名 <tt>root</tt> 用于登录目的.
+>
+> **公开** 当以来宾身份登录到服务器时, macOS 用户可以查看和读/写所有设置
+> 为公开的共享; 在共享中创建或修改的文件将归 `users` 组的 `nobody` 用户所有.<br>
+> 
+> 使用先前在服务器上创建的用户名/密码登录的 macOS 用户还可以查看和读/写所有设置
+> 为公开的共享. 在这种情况下, 在服务器上创建或修改的文件将由登录用户所拥有.
+
+
+> **安全** 当以来宾身份登录到服务器时, macOS 用户可以查看和读取 (而不是写入)
+> 设置为安全的所有共享.<br>
+> 使用先前在服务器上创建的用户名/密码登录的 macOS 用户还可以查看和读取
+> 所有设置为安全的共享. 如果他们的访问权限设置为读/写服务器上的共享,
+> 他们也可以访问写入共享.
+>
+> **私有** 当以来宾身份登录到服务器时, 任何 macOS 用户都无法看到或访问任何
+> 私有共享<br>
+> macOS 使用以前在服务器上创建的用户名/密码登录的用户可以根据其对服务器上
+> 共享的访问权限进行读/写 (或没有访问权限)
+
+&nbsp;
+: <input type="submit" name="changeShareSecurityAFP" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?if ($sec_afp[$name]['security'] == 'secure'):?>
+<div id="title" class="nocontrol"><dt>AFP 用户访问</dt><i>来宾用户拥有 <b>只读</b> 权限.</i></div>
+
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 AFP 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 AFP 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 AFP 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 AFP 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readuserafp" size="1" class="clone" onchange="toggleButton('readuserafp',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='secure') echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='secure') echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readuserafp" value="Read" class="clone" onclick="readUserAFP()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="afp2" name="writeuserafp" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeuserafp',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='secure') $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='secure') $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<option>(全部)</option>";
+foreach ($rows as $row)echo $row;
+?>
+</select><input type="button" id="writeuserafp" value="Write" class="clone" onclick="writeUserAFP()" disabled>
+</div>
+
+<form markdown="1" name="afp_user_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writeuserafp',true);$('#afp2').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+<?input_secure_users($sec_afp);?>
+
+&nbsp;
+: <input type="submit" name="changeShareAccessAFP" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?elseif ($sec_afp[$name]['security'] == 'private'):?>
+<div id="title" class="nocontrol"><dt>AFP 用户访问</dt><i>来宾用户 <b>没有</b> 权限访问.</i></div>
+
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 AFP 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 AFP 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 AFP 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 AFP 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readuserafp" size="1" class="clone" onchange="toggleButton('readuserafp',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='private') echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='private') echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readuserafp" value="Read" class="clone" onclick="readUserAFP()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="afp2" name="writeuserafp" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writeuserafp',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='private') $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name && $sec_afp[$list['name']]['security']=='private') $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<option>(全部)</option>";
+foreach($rows as $row) echo $row;
+?>
+</select><input type="button" id="writeuserafp" value="Write" class="clone" onclick="writeUserAFP()" disabled>
+</div>
+
+<form markdown="1" name="afp_user_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writeuserafp',true);$('#afp2').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+<?input_private_users($sec_afp);?>
+
+&nbsp;
+: <input type="submit" name="changeShareAccessAFP" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+<?endif;?>
+
+<script>
+$(function() {
+  checkShareSettingsAFP(document.afp_edit);
+  initDropdownAFP(false);
+<?if ($tabbed):?>
+  $('<?=$path=='Shares/Share'?'#tab2':'#tab1'?>').bind({click:function(){initDropdownAFP(true);}});
+<?endif;?>
+<?if (count($users)==1):?>
+  toggleButton('readuserafp',true);
+  toggleButton('writeuserafp',true);
+  $('#afp2').dropdownchecklist('disable');
+<?endif;?>
+});
+function checkShareSettingsAFP(form) {
+  form.shareVolsizelimitAFP.disabled = form.shareExportAFP.value!="et";
+}
+function initDropdownAFP(reset) {
+  if (reset) {
+    $('#afp1').dropdownchecklist('destroy');
+    $('#afp2').dropdownchecklist('destroy');
+  }
+  $("#afp1").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+  $("#afp2").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+}
+function readAFP() {
+  var form = document.afp_edit;
+  var name = $('select[name="readafp"]').val();
+  $.get('/webGui/include/ProtocolData.php',{protocol:'afp',name:name},function(json) {
+    var data = $.parseJSON(json);
+    form.shareExportAFP.value = data.export;
+    form.shareVolsizelimitAFP.value = data.volsizelimit;
+    form.shareVoldbpathAFP.value = data.voldbpath;
+    form.shareSecurityAFP.value = data.security;
+  });
+  $(form).find('select').trigger('change');
+}
+function writeAFP() {
+  var data = {}, copied = false;
+  data.shareExportAFP = '<?=addslashes(htmlspecialchars($sec_afp[$name]['export']))?>';
+  data.shareVolsizelimitAFP = '<?=addslashes(htmlspecialchars($sec_afp[$name]['volsizelimit']))?>';
+  data.shareVoldbpathAFP = '<?=addslashes(htmlspecialchars($sec_afp[$name]['voldbpath']))?>';
+  data.shareSecurityAFP = '<?=addslashes(htmlspecialchars($sec_afp[$name]['security']))?>';
+  data.changeShareSecurityAFP = 'Apply';
+  $('select#afp1 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'AFP 安全设置已写入所选共享',type:'success'},function(){refresh();});
+}
+function readUserAFP() {
+  var form = document.afp_user_edit;
+  var name = $('select[name="readuserafp"]').val();
+  var users = {};
+<?
+  foreach ($users as $user) {
+    if ($user['name'] == "root") continue;
+    echo "users['{$user['name']}'] = {$user['idx']};\n";
+  }
+?>
+  $.get('/webGui/include/ProtocolData.php',{protocol:'afp',name:name},function(json) {
+    var data = $.parseJSON(json);
+    var readList = data.readList.split(',');
+    var writeList = data.writeList.split(',');
+    $(form).find('select[name^="userAccess."]').each(function(){$(this).val('no-access');});
+    for (var i=0; i < readList.length; i++) $(form).find('select[name="userAccess.'+users[readList[i]]+'"]').val('read-only');
+    for (var i=0; i < writeList.length; i++) $(form).find('select[name="userAccess.'+users[writeList[i]]+'"]').val('read-write');
+  });
+  $(form).find('select').trigger('change');
+}
+function writeUserAFP() {
+  var data = {}, copied = false;
+  data['userAccess.0'] = 'no-access';
+<?
+  $read_list = explode(",", $sec_afp[$name]['readList']);
+  $write_list = explode(",", $sec_afp[$name]['writeList']);
+  foreach ($users as $user) {
+    if ($user['name'] == "root") continue;
+    $idx = $user['idx'];
+    $userAccess = null;
+    if ($sec_afp[$name]['security']=='secure') {
+      $userAccess = in_array($user['name'], $write_list) ? "read-write" : "read-only";
+    } elseif ($sec_afp[$name]['security'] == 'private') {
+      $userAccess = in_array($user['name'], $write_list) ? "read-write" : (in_array($user['name'], $read_list) ? "read-only" : "no-access");
+    }
+    if ($userAccess) echo "  data['userAccess.$idx'] = '$userAccess';\n";
+  }
+?>
+  data.changeShareAccessAFP = 'Apply';
+  $('select#afp2 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'AFP 用户访问权限设置已写入所选共享',type:'success'},function(){refresh();});
+}
+</script>

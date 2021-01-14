@@ -1,0 +1,35 @@
+Menu="SMB:2"
+Title="工作组设置"
+Tag="sitemap"
+Cond="($var['shareSMBEnabled']=='yes')"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<form markdown="1" name="WorkGroup" method="POST" action="/update.htm" target="progressFrame">
+工作组:
+: <input type="text" name="WORKGROUP" maxlength="40" value="<?=htmlspecialchars($var['WORKGROUP'])?>" class="narrow" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+
+> 输入您的本地网络工作组名称. 通常这是 'WORKGROUP'.
+
+本地主管:
+: <select name="localMaster" <?if ($var['fsState']=="Started"):?>disabled<?endif;?>>
+  <?=mk_option($var['localMaster'], "no", "否");?>
+  <?=mk_option($var['localMaster'], "yes", "是");?>
+  </select>
+
+> 如果设置为 '是', 则服务器将完全参与浏览器的选择, 并且不参加
+> 其他服务器, 通常将成为本地主浏览器.
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()"><?if ($var['fsState']=="Started"):?>阵列必须为 <span class="strong big">已停止</span> 才能更改<?endif;?>
+</form>

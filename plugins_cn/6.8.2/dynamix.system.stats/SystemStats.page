@@ -1,0 +1,103 @@
+Menu="Stats:2"
+Title="系统状态"
+Tag="area-chart"
+Cond="(exec(\"awk -F= '/^show=/{print $2}' /boot/config/plugins/dynamix.system.stats/dynamix.system.stats.cfg 2>/dev/null\")!='\"\"')"
+---
+<?PHP
+/* Copyright 2012-2020, Bergware International.
+ * Copyright 2012, Andrew Hamer-Adams, http://www.pixeleyes.co.nz.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$plugin = 'dynamix.system.stats';
+$translations = file_exists("$docroot/webGui/include/Translations.php");
+require_once "$docroot/plugins/$plugin/include/Legacy.php";
+?>
+<?if (!$translations):?>
+<?eval('?>'.parse_file("$docroot/plugins/$plugin/SystemStats.page"))?>
+<?else:?>
+<?
+if ($var['fsState']=="Stopped"):
+  echo "<div class='notice'>"._('阵列必须 **已启动** 才能查看系统状态').".</div>";
+  return;
+endif;
+
+$cols++;
+$tag = $cols==1 ? 'graph2' : 'graph3';
+$cpu = strpos($show,'cpu')!==false;
+$ram = strpos($show,'ram')!==false;
+$com = strpos($show,'com')!==false;
+$hdd = strpos($show,'hdd')!==false;
+
+$cell = 1;
+$last = ' last';
+$tag1 = $tag.((!$ram && !$com && !$hdd) ? $last : '');
+if ($cpu) $cell++;
+$tag2 = $tag.(((!$com && !$hdd) || ($cols>1 ? $cell%$cols==0 : false)) ? $last : '');
+if ($ram) $cell++;
+$tag3 = $tag.((!$hdd || ($cols>1 ? $cell%$cols==0 : false)) ? $last : '');
+$tag4 = $tag.$last;
+
+function selector() {
+  global $graph, $frame;
+  echo "<span class='status'>";
+  echo "<span id='selector'><select onchange='modeller(this.value)'>";
+  echo mk_option($graph, '0', _('实时'));
+  echo mk_option($graph, '1', _('最近1天'));
+  echo mk_option($graph, '2', _('最近2天'));
+  echo mk_option($graph, '3', _('最近3天'));
+  echo mk_option($graph, '7', _('最近1周'));
+  echo mk_option($graph, '14', _('最近2周'));
+  echo mk_option($graph, '21', _('最近3周'));
+  echo mk_option($graph, '31', _('最近1月'));
+  echo mk_option($graph, '3653', _('自启动起'));
+  echo "</select></span>";
+  echo "<span id='monitor'><select onchange='resizer(this.value)'>";
+  echo mk_option($frame, '15', _('30 秒'));
+  echo mk_option($frame, '30', _('1 分钟'));
+  echo mk_option($frame, '60', _('2 分钟'));
+  echo mk_option($frame, '150', _('5 分钟'));
+  echo mk_option($frame, '300', _('10 分钟'));
+  echo mk_option($frame, '900', _('30 分钟'));
+  echo mk_option($frame, '1800', _('1 小时'));
+  echo mk_option($frame, '3600', _('2 小时'));
+  echo "</select><input type='button' value='"._('重置')."' onclick='modeller(0)'></span>";
+  echo "</span>";
+}
+?>
+<script>
+$('.tabs').append("<?=selector()?>");
+<?if ($cfg['first']):?>
+$.cookie('one','tab2',{path:'/'});
+$(function(){
+  $('span.status').show();
+  systemStats();
+});
+<?else:?>
+$('span.status').hide();
+$.removeCookie('one',{path:'/'});
+<?endif;?>
+</script>
+<?if ($cpu):?>
+<span id='cpu' class='<?=$tag1?>'></span>
+<?endif;?>
+<?if ($ram):?>
+<span id='ram' class='<?=$tag2?>'></span>
+<?endif;?>
+<?if ($com):?>
+<span id='com' class='<?=$tag3?>'></span>
+<?endif;?>
+<?if ($hdd):?>
+<span id='hdd' class='<?=$tag4?>'></span>
+<?endif;?>
+<?if (!empty($cfg['stats']) && substr($cfg['stats'],0,5)!='Tasks'):?>
+<p><input type="button" value="_(完成)_" onclick="done()"></p>
+<?endif;?>
+<?endif;?>

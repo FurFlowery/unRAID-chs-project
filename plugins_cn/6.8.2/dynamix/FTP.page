@@ -1,0 +1,63 @@
+Menu="NetworkServices:999"
+Title="FTP 服务器"
+Icon="icon-ftp"
+Tag="globe"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018 Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+
+<?
+$ftp_userlist_file = "/boot/config/vsftpd.user_list";
+$ftp_userlist = "";
+if (file_exists($ftp_userlist_file)) {
+  $ftp_userlist = str_replace("\n", " ", trim(file_get_contents($ftp_userlist_file)));
+  if ($ftp_userlist === false) $ftp_userlist = "";
+}
+$ftp_server = exec("lsof -i:21 -Pln|awk '/\(LISTEN\)/{print $2;exit}'") ? 1 : 0;
+?>
+<script>
+$(function() {
+  showStatus('21');
+});
+</script>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#command" value="/webGui/scripts/ftpusers">
+
+FTP 服务器:
+: <select name="#arg[1]" size="1">
+  <?=mk_option($ftp_server, "0", "禁用")?>
+  <?=mk_option($ftp_server, "1", "启用")?>
+  </select>
+
+> 启用或禁用 FTP 服务器守护程序. 默认情况下, FTP 服务器是启用的.
+> 此设置未保存, 在系统重新启动时, 它将恢复为默认设置.
+
+FTP 用户:
+: <input type="text" name="#arg[2]" size="40" maxlength="80" value="<?=htmlspecialchars($ftp_userlist)?>">
+
+> 输入允许使用 FTP 访问服务器的用户名 (用空格分隔).
+> 若要禁止任何用户访问, 请清除此设置.
+>
+> **注意:** 请勿使用 `root` 作为用户名, 因为这可能会引起问题.
+
+&nbsp;
+: <input type="submit" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+
+</form>
+
+> ### 概览
+>
+> Unraid includes the popular `vsftpd` FTP server.  The configuration of `vsftp` is currently very
+> simple: **All** user names entered above are permitted to access the server via FTP and will have
+> *full read/write/delete access* to the entire server, so use with caution.

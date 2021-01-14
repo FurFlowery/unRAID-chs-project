@@ -1,0 +1,21 @@
+Menu="关于"
+Title="EULA"
+Icon="icon-eula"
+Tag="file-text-o"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$file = "/boot/license.txt";
+if (file_exists($file)) echo Markdown(file_get_contents($file)); else echo Markdown("** 没有许可证文件! **");
+?>
+<button type="button" onclick="done()">完成</button>

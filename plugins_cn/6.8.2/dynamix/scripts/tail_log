@@ -1,0 +1,30 @@
+#!/usr/bin/php -q
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+echo "<p style='text-align:center'><span class='error label'>错误</span><span class='warn label'>警告</span><span class='system label'>系统</span><span class='array label'>阵列</span><span class='login label'>登录</span></p>\n";
+
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+require_once "$docroot/webGui/include/ColorCoding.php";
+
+$handle = popen('/usr/bin/tail -n 40 -f '.escapeshellarg("/var/log/{$argv[1]}").' 2>&1', 'r');
+while (!feof($handle)) {
+  $line = fgets($handle);
+  if (strpos($line,'tail_log')!==false) continue;
+  $span = "span";
+  foreach ($match as $type) foreach ($type['text'] as $text) if (preg_match("/$text/i",$line)) {$span = "span class='{$type['class']}'"; break 2;}
+  echo "<$span>".htmlspecialchars($line)."</span>";
+  flush();
+}
+pclose($handle);
+?>

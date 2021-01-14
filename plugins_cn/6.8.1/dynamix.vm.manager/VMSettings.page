@@ -1,0 +1,452 @@
+Menu="OtherSettings"
+Title="虚拟机管理器"
+Icon="icon-virtualization"
+Tag="columns"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2015-2019, Derek Macias, Eric Schultz, Jon Panozzo.
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+require_once "$docroot/plugins/dynamix.vm.manager/include/libvirt_helpers.php";
+
+// Check for Intel VT-x (vmx) or AMD-V (svm) cpu virtualization support
+// If either kvm_intel or kvm_amd are loaded then Intel VT-x (vmx) or AMD-V (svm) cpu virtualization support was found
+$strLoadedModules = shell_exec("/etc/rc.d/rc.libvirt test");
+if (empty($strLoadedModules)) {
+  echo "<p class='notice'>您的硬件没有英特尔 VT-x 或 AMD-V 功能. 这是在 KVM 中创建虚拟机所必需的.";
+  echo "<a href='http://lime-technology.com/wiki/index.php/UnRAID_Manual_6#Hardware-Assisted_Virtualization_.28HVM.29' target='_blank'>单击此处查看 Unraid Wiki 了解更多信息</a></p>";
+  echo "<input type='button' value='完成' onclick='done()'>";
+  exit;
+}
+
+function scan($area, $text) {
+  return strpos($area,$text)!==false;
+}
+function detect(&$syslinux, $key) {
+  $size = count($syslinux);
+  $menu = $i = 0;
+  $value = '';
+  // find the default section
+  while ($i < $size) {
+    if (scan($syslinux[$i],'label ')) {
+      $n = $i + 1;
+      // find the current requested setting
+      while (!scan($syslinux[$n],'label ') && $n < $size) {
+        if (scan($syslinux[$n],'menu default')) $menu = 1;
+        if (scan($syslinux[$n],'append')) foreach (explode(' ',$syslinux[$n]) as $cmd) if (scan($cmd,$key)) {$value = explode('=',$cmd)[1]; break;}
+        $n++;
+      }
+      if ($menu) break; else $i = $n - 1;
+    }
+    $i++;
+  }
+  return $value;
+}
+$syslinux          = file('/boot/syslinux/syslinux.cfg',FILE_IGNORE_NEW_LINES+FILE_SKIP_EMPTY_LINES);
+$arrValidBridges   = getNetworkBridges();
+$pcie_acs_override = detect($syslinux, 'pcie_acs_override');
+$vfio_allow_unsafe = detect($syslinux, 'allow_unsafe_interrupts');
+$bgcolor           = strstr('white,azure',$display['theme']) ? '#f2f2f2' : '#1c1c1c';
+?>
+<link type="text/css" rel="stylesheet" href="<?autov('/plugins/dynamix.vm.manager/styles/dynamix.vm.manager.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.filetree.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<style>
+body{-webkit-overflow-scrolling:touch}
+.errortext{color:#EF3D47;display:none}
+.fileTree{background:<?=$bgcolor?>;width:300px;max-height:150px;overflow-y:scroll;overflow-x:hidden;position:absolute;z-index:100;display:none}
+.basic{display:block}
+.advanced{display:none}
+#winvirtio{display:none}
+#download_status{margin-left:5px;color:#777;display:none}
+#download_button{cursor:pointer;margin-left:-2px;color:#08C;display:none;transform:translate(0px,2px)}
+#download_button.fa-spin{cursor:default;color:#777}
+#download_button span{font-family:clear-sans}
+#download_button.fa-spin span{font-family:clear-sans;display:none}
+#remove_button{cursor:pointer;margin-left:-2px;color:#EF3D47;display:none;transform:translate(0px,2px)}
+#remove_button span{font-family:clear-sans}
+</style>
+
+<span class="status vhshift"><input type="checkbox" class="advancedview"></span>
+<form markdown="1" id="settingsForm" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=htmlspecialchars($domain_cfgfile)?>">
+<input type="hidden" name="#command" value="/plugins/dynamix/scripts/emcmd">
+<input type="hidden" name="#arg[1]" value="cmdStatus=Apply">
+启用虚拟机:
+: <select id="SERVICE" name="SERVICE">
+  <?= mk_option($libvirt_service, 'disable', '否'); ?>
+  <?= mk_option($libvirt_service, 'enable', '是'); ?>
+  </select>
+  <?if ($var['fsState'] != "Started"):?>
+  <span id="arraystopped"><i class="fa fa-warning icon warning"></i> <?=($libvirt_service=='enable')?'当阵列启动后方可启用虚拟机':'Apply to activate VMs after Array is Started'?></span>
+  <?elseif (!is_dir(dirname($domain_cfg['IMAGE_FILE'])) || !is_dir($domain_cfg['DOMAINDIR']) || !is_dir($domain_cfg['MEDIADIR'])):?>
+  <span class="basic" style="display:inline"><i class="fa fa-warning icon warning"></i>一个或多个路径不存在 (<a href="#" onclick="$('.advancedview').switchButton('option','checked',true); return false">查看</a>)</span>
+  <?endif;?>
+
+> 停止 '虚拟机管理器' 将首先尝试关闭所有正在运行的 '虚拟机' 60秒后, 所有剩余的 '虚拟机' 实例将被终止.
+
+<div class="advanced" markdown="1">
+<?if ($libvirt_running == 'yes'):?>
+<?$libvirt_info = libvirt_version('libvirt')?>
+<?$qemu_info = $lv->get_connect_information()?>
+Libvirt 版本:
+: <?=$libvirt_info['libvirt.major'].'.'.$libvirt_info['libvirt.minor'].'.'.$libvirt_info['libvirt.release']?>
+
+QEMU 版本:
+: <?=$qemu_info['hypervisor_major'].'.'.$qemu_info['hypervisor_minor'].'.'.$qemu_info['hypervisor_release']?>
+
+Libvirt 存储位置:
+: <?=htmlspecialchars($domain_cfg['IMAGE_FILE'])?>
+
+> 这是 Libvirt 卷.
+
+<?else: /* Libvirt is stopped */ ?>
+Libvirt 虚拟磁盘大小:
+: <input id="IMAGE_SIZE" type="number" min="1" name="IMAGE_SIZE" value="<?=htmlspecialchars($domain_cfg['IMAGE_SIZE']);?>" style="width:50px;" required="required" />GB <span id="SIZE_ERROR" class="errortext"></span>
+
+> 如果系统需要创建新的 Libvirt 镜像文件, 则这是要使用的默认大小 (以 GB 为单位).
+> 要调整现有镜像文件的大小, 请在此处指定新大小. 下次启动 Libvirt 服务时, 文件 (和文件系统) 将增加到新的大小 (但不会减少).
+
+Libvirt 存储位置:
+: <input id="IMAGE_FILE" type="text" name="IMAGE_FILE" value="<?=htmlspecialchars($domain_cfg['IMAGE_FILE']);?>" placeholder="例如 /mnt/user/system/libvirt/libvirt.img" data-pickcloseonfile="true" data-pickfilter="img" data-pickroot="/mnt/" data-pickfolders="true" required pattern="^[^\\]*\.(img|IMG)$"> <?php if (file_exists($domain_cfg['IMAGE_FILE'])) { ?><span id="deletePanel"><label><input type="checkbox" id="deleteCheckbox" /> 删除镜像文件</label></span><?php } ?> <?if ($var['fsState'] != "Started"):?><span><i class="fa fa-warning icon warning"></i>谨慎修改：在启动阵列之前无法验证路径</span><?elseif (!is_dir(dirname($domain_cfg['IMAGE_FILE']))):?><span><i class="fa fa-warning icon warning"></i> 路径不存在</span><?endif;?> <span id="IMAGE_ERROR" class="errortext"></span>
+
+> 您必须为 Libvirt 指定一个镜像文件, 首次启动 Libvirt 服务时, 系统将自动创建此文件.
+
+<?endif;?>
+默认虚拟机存储路径:
+: <input type="text" id="domaindir" data-pickfolders="true" data-pickfilter="NO_FILES_FILTER" data-pickroot="<?= (is_dir('/mnt/user/') ? '/mnt/user/' : '/mnt/') ?>" name="DOMAINDIR" value="<?=htmlspecialchars($domain_cfg['DOMAINDIR'])?>" placeholder="Click to Select" pattern="^[^\\]*/$"> <?if ($var['fsState'] != "Started"):?><span><i class="fa fa-warning icon warning"></i> 谨慎修改：在启动阵列之前无法验证路径</span><?elseif (!is_dir($domain_cfg['DOMAINDIR'])):?><span><i class="fa fa-warning icon warning"></i> 路径不存在</span><?endif;?>
+
+> 指定一个包含虚拟机所有虚拟机子目录的用户共享
+
+默认 ISO 存储路径:
+: <input type="text" id="mediadir" data-pickfolders="true" data-pickfilter="NO_FILES_FILTER" data-pickroot="<?= (is_dir('/mnt/user/') ? '/mnt/user/' : '/mnt/') ?>" name="MEDIADIR" value="<?=htmlspecialchars($domain_cfg['MEDIADIR'])?>" placeholder="Click to Select" pattern="^[^\\]*/$"> <?if ($var['fsState'] != "Started"):?><span><i class="fa fa-warning icon warning"></i> 谨慎修改：在启动阵列之前无法验证路径/span><?elseif (!is_dir($domain_cfg['MEDIADIR'])):?><span><i class="fa fa-warning icon warning"></i> 路径不存在</span><?endif;?>
+
+> 指定包含您所有操作系统安装介质的用户共享
+
+</div>
+默认 Windows VirtIO 驱动程序 ISO<span style="font-weight: normal">(可选)</span>:
+: <select id="winvirtio_select">
+  <?$iso_dir = $domain_cfg['MEDIADIR'];
+    if (empty($iso_dir) || !is_dir($iso_dir)) {
+      $iso_dir = '/mnt/user/isos/';
+    } else {
+      $iso_dir = str_replace('//', '/', $iso_dir.'/');
+    }
+    $strMatch = '';
+    if (!empty($domain_cfg['MEDIADIR']) && !empty($domain_cfg['VIRTIOISO']) && dirname($domain_cfg['VIRTIOISO']) != '.' && is_file($domain_cfg['VIRTIOISO'])) {
+      $strMatch = 'manual';
+    }
+    foreach ($virtio_isos as $key => $value) {
+      if (($domain_cfg['VIRTIOISO'] == $iso_dir.$value['name']) && is_file($iso_dir.$value['name'])) {
+        $strMatch = $value['name'];
+      }
+        echo mk_option($strMatch, $value['name'], $value['name']);
+    }
+    echo mk_option($strMatch, 'manual', 'Manual');
+  ?>
+  </select><input type="text" id="winvirtio" name="VIRTIOISO" data-pickfilter="iso" data-pickcloseonfile="true" data-pickroot="<?= (is_dir('/mnt/user/') ? '/mnt/user/' : '/mnt/') ?>" value="<?=htmlspecialchars($domain_cfg['VIRTIOISO'])?>"<?if ($var['fsState'] == "Started"):?> placeholder="点击选择" pattern="^[^\\]*\.(iso|ISO)$"><i class="fa fa-trash" id="remove_button" title="删除 Windows VirtIO 驱动 ISO"> <span>删除</span></i><i class="fa fa-download" id="download_button" title="下载 Windows VirtIO 驱动 ISO"> <span>下载</span></i><span id="download_status"></span<?endif;?>>
+
+> 指定包含由 Fedora 项目提供的 VirtIO Windows 驱动程序的虚拟 CD-ROM (ISO).
+> 从这里下载最新的 ISO: <a href="https://docs.fedoraproject.org/en-US/quick-docs/creating-windows-virtual-machines-using-virtio-drivers/index.html#virtio-win-direct-downloads" target="_blank">fedoraproject.org</a>
+>
+> 安装 Windows 时, 您将到达一个步骤, 在该步骤中找不到磁盘设备. 可以在屏幕上浏览驱动程序.
+> 单击 '浏览' 并在菜单中找到附加的 CD-ROM. 里面将有不同版本的 Windows 的不同文件夹.
+> 打开要安装的 Windows 版本的文件夹, 然后选择其中的 AMD64 子文件夹 (即使在英特尔系统上, 也要选择 AMD64).
+> 将找到驱动程序. 全部选中, 单击 '下一步', 将显示您分配的虚拟磁盘.
+
+<div class="advanced" markdown="1">
+默认网桥:
+: <select id="bridge" name="BRNAME">
+  <?foreach ($arrValidBridges as $strBridge) echo mk_option($domain_cfg['BRNAME'], $strBridge, $strBridge);?>
+  </select>
+
+> 选择要应用在虚拟机上的默认网桥,
+> 设置 'virbr0' 将允许 Libvirt 创建 NAT (网络地址转换) 的虚拟网桥
+> 并充当 DHCP 服务器, 将 IP 地址直接分发给虚拟机.
+> 在 '网络设置' 下创建虚拟网桥时, 会出现更多可选选项.
+>
+> 注意: 您还可以在每个虚拟机的基础上指定一个网桥.
+
+主机关闭时:
+: <select id="hostshutdown" name="HOSTSHUTDOWN">
+  <?echo mk_option($domain_cfg['HOSTSHUTDOWN'], 'shutdown', '虚拟机关机');
+    echo mk_option($domain_cfg['HOSTSHUTDOWN'], 'hibernate', '虚拟机休眠');
+  ?>
+  </select>
+
+> 这将定义在关闭服务器时, 正在运行的虚拟机要执行的操作. 如果选择了 *虚拟机休眠*, 
+> 则将指示虚拟机休眠 (如果支持), 否则将尝试关闭虚拟机.
+
+虚拟机关闭超时:
+: <input type="number" id="vm_shutdown_timeout" name="TIMEOUT" value="<?=htmlspecialchars($domain_cfg['TIMEOUT'])?>" class="narrow">
+  <?if (!empty($var['shutdownTimeout']) && !empty($domain_cfg['TIMEOUT']) && (int)$domain_cfg['TIMEOUT'] > (int)$var['shutdownTimeout']):?>
+  <span id="arraystopped"><i class="fa fa-warning icon warning"></i> exceeds Disk Shutdown <?=htmlspecialchars($var['shutdownTimeout'])?>s time-out (<a href="/Settings/DiskSettings">edit</a>)</span>
+  <?endif;?>
+
+> 这将定义在关闭服务器时, 在强制关机之前继续等待 *正常* 的虚拟机关机的时间 (秒).
+> 注意: 建议从虚拟机内部关闭虚拟机.
+
+PCIe ACS 覆盖:
+: <select id="pcie_acs_override"<?=$safemode?' disabled':''?>>
+  <?= mk_option($pcie_acs_override, '', '禁用'); ?>
+  <?= mk_option($pcie_acs_override, 'downstream', '下游'); ?>
+  <?= mk_option($pcie_acs_override, 'multifunction', '多功能'); ?>
+  <?= mk_option($pcie_acs_override, 'downstream,multifunction', '两者'); ?>
+  </select><?if($safemode):?><span>*Setting disabled in **safe mode***</span><?endif;?>
+
+> *PCIe ACS 覆盖* 允许各种硬件组件将自己公开为独立设备.
+> 通常情况下隔离 *下游* 端口就足够了.
+> 硬件组件可能需要设置 *多功能* 或 *两者* 来进一步隔离不同的硬件功能.<br>
+> 要使对此设置的更改生效, 需要重新启动.
+>
+> **警告: 使用此设置可能会导致某些硬件配置的数据损坏.**
+> 请访问 [Lime Technology 论坛](https://forums.unraid.net/forum/51-vm-engine-kvm) 了解更多信息.
+
+VFIO 允许不安全中断:
+: <select id="vfio_allow_unsafe"<?=$safemode?' disabled':''?>>
+  <?= mk_option($vfio_allow_unsafe, '', '否'); ?>
+  <?= mk_option($vfio_allow_unsafe, '1', '是'); ?>
+  </select><?if($safemode):?><span>*在**安全模式** 下禁用设置*</span><?endif;?>
+
+> 如果系统不支持中断重映射, 则可以通过允许不安全的中断来启用这些功能.<br>
+> 要使对此设置的更改生效, 需要重新启动.
+>
+> **警告: 使用此设置可能会导致某些硬件配置的数据损坏.**
+> 请访问 [Lime Technology 论坛](https://forums.unraid.net/forum/51-vm-engine-kvm) 了解更多信息.
+
+</div>
+<?if (file_exists("/var/log/libvirt/libvirtd.log")):?>
+<input type="button" onclick="openWindow('/webGui/scripts/tail_log&arg1=libvirt/libvirtd.log','Libvirt 日志',600,900);" value="查看 Libvirt 日志"/>
+<?else:?>
+&nbsp;
+<?endif;?>
+: <input type="button" id="applyBtn" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+<div class="notice reboot" style="display:none;margin-bottom:24px">必须重新启动系统才能使更改生效!</div>
+
+<?if (file_exists("/var/log/libvirt/libvirtd.log")):?>
+
+> 查看 Libvirt 日志: <a id="openlog" title="/var/log/libvirt/libvirtd.log" href="#" onclick="openWindow('/webGui/scripts/tail_log&arg1=libvirt/libvirtd.log','Libvirt 日志',600,900);">/var/log/libvirt/libvirtd.log</a>
+
+<?endif;?>
+
+<?if ($libvirt_running == 'yes' && trim(shell_exec('stat -c %T -f /etc/libvirt'))=='btrfs'):?>
+<div class="advanced" markdown="1">
+<div id="title"><span class="left"><i class="title fa fa-list"></i>Libvirt 卷信息</span></div>
+btrfs 文件系统信息:
+: <?="<pre>".shell_exec("btrfs filesystem show /etc/libvirt")."</pre>"?>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<?exec("$docroot/webGui/scripts/btrfs_scrub status /etc/libvirt", $scrub_status, $retval);?>
+btrfs scrub status:
+: <?="<pre>".implode("\n", $scrub_status)."</pre>"?>
+
+<?if ($retval != 0):?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="start">
+<input type="hidden" name="#arg[2]" value="/etc/libvirt">
+<input type="hidden" name="#arg[3]" value="-r">
+&nbsp;
+: <input type="submit" value="文件系统检查"><label><input type="checkbox" name="#arg[3]" value="">更正文件系统错误</label>
+
+> **文件系统检查** 运行 *btrfs scrub* 程序检查文件系统完整性.
+> 如果需要修复, 则应检查 *更正文件系统错误* 并运行第二个修复过程, 这将允许 *btrfs scrub* 修复文件系统.
+
+<?else:?>
+<input type="hidden" name="#command" value="/webGui/scripts/btrfs_scrub">
+<input type="hidden" name="#arg[1]" value="cancel">
+<input type="hidden" name="#arg[2]" value="/etc/libvirt">
+&nbsp;
+: <input type="button" value="Refresh" onclick="refresh()"><input type="submit" value="取消">*运行中*
+
+> **取消* 将取消正在进行的修复操作.
+
+</form>
+<?endif;?>
+</div>
+
+<?elseif ($libvirt_running != 'yes'):?>
+<form id="removeForm" method="POST" action="/update.php" target="progressFrame">
+  <input type="hidden" name="#command" value="/plugins/dynamix.vm.manager/scripts/libvirt_rm">
+</form>
+<?endif;?>
+
+<script src="<?autov('/webGui/javascript/jquery.filetree.js')?>"></script>
+<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.vm.manager/javascript/dynamix.vm.manager.js')?>"></script>
+<script>
+$(function(){
+  $("#applyBtn").click(function(){
+    if ($("#deleteCheckbox").length && $("#deleteCheckbox").is(":checked")) {
+      $("#removeForm").submit();
+      return;
+    }
+    var run = true;
+    $("#settingsForm").find('input[type="text"]').each(function(){
+      if ($(this).is(':visible') && $(this).attr('pattern')) {
+        var pattern = new RegExp($(this).attr('pattern'));
+        if (!pattern.test($(this).val())) {$(this).css('color','red'); run = false;}
+      }
+    });
+<?if ($safemode):?>
+    if (run) $("#settingsForm").submit();
+<?else:?>
+    if (run) $.post("/plugins/dynamix.vm.manager/include/VMajax.php", {action:'syslinux',pcie:$('#pcie_acs_override').val(),vfio:$('#vfio_allow_unsafe').val()}, function(data){
+      $("#settingsForm").submit();
+    });
+<?endif;?>
+  });
+
+  $("#mediadir").on("input change", function(){
+    $("#winvirtio_select").change();
+  });
+
+  var checkDownloadTimer = null;
+  var checkOrInitDownload = function(checkonly){
+    clearTimeout(checkDownloadTimer);
+    var $button = $("#download_button");
+    var $form = $button.closest('form');
+    var postdata = {
+      action: "virtio-win-iso-download",
+      download_version: $('#winvirtio_select').val(),
+      download_path: $('#mediadir').val(),
+      checkonly: ((typeof checkonly === 'undefined') ? false : !!checkonly) ? 1 : 0
+    };
+    $button.removeClass('fa-download').addClass('fa-circle-o-notch fa-spin');
+    $.post("/plugins/dynamix.vm.manager/include/VMajax.php", postdata, function(data){
+      if (postdata.download_version != $('#winvirtio_select').val())
+        return;
+      if (data.error) {
+        $("#download_status").html('<span style="color: red">' + data.error + '</span>');
+        $button.removeClass('fa-circle-o-notch fa-spin').addClass('fa-download');
+      } else {
+        $("#download_status").html(data.status);
+        if (data.pid) {
+          checkDownloadTimer = setTimeout(checkOrInitDownload, 1000);
+          return;
+        }
+        if (data.status == 'Done') {
+          $("#winvirtio_select").change();
+        }
+      }
+    }, "json");
+  };
+  $("#SERVICE").change(function changeService(){
+    if ($(this).val()=='enable') {
+      $('#arraystopped').fadeIn('slow');
+    } else {
+      $('#arraystopped').fadeOut('fast');
+    }
+  });
+  if ($("#SERVICE").val()!='enable') $('#arraystopped').hide();
+  $("#download_button").click(function downloadVirtIOVersion(){
+    if (!$(this).hasClass('fa-spin')) {
+      checkOrInitDownload(false);
+    }
+  });
+  $("#remove_button").click(function removeVirtIOVersion() {
+    var postdata = {
+      action: "virtio-win-iso-remove",
+      path: $('#mediadir').val(),
+      file: $('#winvirtio_select').val()
+    };
+    $.post("/plugins/dynamix.vm.manager/include/VMajax.php", postdata, function(data){
+      if (postdata.file != $('#winvirtio_select').val()) return;
+      if (data.success) {
+        $("#winvirtio_select").change();
+      }
+    }, "json");
+  });
+  // Fire events below once upon showing page
+  $("#winvirtio_select").change(function changeVirtIOVersion(){
+    clearTimeout(checkDownloadTimer);
+    if ($(this).val()=='manual') {
+      $("#download_button,#download_status").hide('fast');
+      $("#winvirtio").show('fast');
+      return;
+    }
+    $("#winvirtio").hide('fast');
+    var params = {
+      action: "virtio-win-iso-info",
+      path: $("#mediadir").val(),
+      file: $(this).val()
+    };
+    $.post("/plugins/dynamix.vm.manager/include/VMajax.php", params, function(data){
+      if (!data.exists || data.pid) {
+        $("#remove_button").hide('fast');
+        $("#download_button").removeClass('fa-circle-o-notch fa-spin').addClass('fa-download').show('fast');
+        $("#download_status").html('').show('fast');
+        if (data.pid) {
+          checkOrInitDownload(true);
+        }
+      } else {
+        $("#download_button,#download_status").hide('fast');
+        $("#remove_button").show('fast');
+        $("#winvirtio").val(data.path);
+      }
+    }, "json");
+  }).change(); // Fire now too!
+  if ($.cookie('vmsettings_view_mode') == 'advanced') {
+    $('.advanced').show();
+    $('.basic').hide();
+  }
+  $('.advancedview').switchButton({
+    labels_placement: "left",
+    on_label: '高级视图',
+    off_label: '基本视图',
+    checked: $.cookie('vmsettings_view_mode') == 'advanced'
+  });
+  $('.advancedview').change(function(){
+    $('.advanced').toggle('slow');
+    $('.basic').toggle('slow');
+    $.cookie('vmsettings_view_mode', $('.advancedview').is(':checked') ? 'advanced' : 'basic', {expires:3650});
+  });
+  showStatus('pid','libvirt/libvirtd');
+  <?if ($var['fsState'] == "Started"):?>
+    $("input[data-pickroot]").fileTreeAttach();
+  <?endif;?>
+  if ($("#IMAGE_FILE").length) {
+    $("#IMAGE_FILE").on("input change", function(){
+      $("#IMAGE_ERROR").fadeOut();
+      $("#applyBtn").prop("disabled", false);
+      <? if (file_exists($domain_cfg['IMAGE_FILE'])) { ?>
+      if ($(this).val() != "<?=$domain_cfg['IMAGE_FILE']?>") {
+        $("#deleteCheckbox").prop("disabled", true).attr("checked", false);
+        $("#deletePanel").fadeOut();
+      } else {
+        $("#deleteCheckbox").attr("checked", false).prop("disabled", false);
+        $("#deletePanel").fadeIn();
+      }
+      <? } ?>
+    });
+    $("#deleteCheckbox").change(function(){
+      var checked = $(this).is(":checked");
+      $("#SERVICE").prop("disabled", checked).val('disable');
+      $("#IMAGE_SIZE").prop("disabled", checked);
+      $("#IMAGE_FILE").prop("disabled", checked).val("<?=$domain_cfg['IMAGE_FILE']?>");
+      $("#domaindir").prop("disabled", checked);
+      $("#mediadir").prop("disabled", checked);
+      $("#winvirtio_select").prop("disabled", checked);
+      $("#winvirtio").prop("disabled", checked);
+      $("#bridge").prop("disabled", checked);
+      $("#hostshutdown").prop("disabled", checked);
+      $("#pcie_acs_override").prop("disabled", checked);
+      $("#vm_shutdown_timeout").prop("disabled", checked);
+      $("#applyBtn").val(checked ? "Delete" : "Apply").removeAttr('disabled');
+    });
+  }
+  $.post("/plugins/dynamix.vm.manager/include/VMajax.php", {action:'reboot'}, function(data){
+    if (data.modified) $('div.notice.reboot').show(); else $('div.notice.reboot').hide();
+  });
+});
+</script>

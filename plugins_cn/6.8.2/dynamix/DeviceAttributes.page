@@ -1,0 +1,35 @@
+Menu="Device New"
+Title="属性"
+Tag="address-card-o"
+Cond="strpos($disks[$name]['status'],'_NP')===false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+$(function() {
+  $.post("/webGui/include/SmartInfo.php",{cmd:'attributes',port:'<?=addslashes(htmlspecialchars($disks[$name]['device']??$name))?>',name:'<?=addslashes(htmlspecialchars($name))?>'}, function(data) {
+    $('#disk_attributes').html(data);
+  });
+});
+</script>
+<table class='share_status small'>
+<thead><td style="width:40px">#</td><td>属性名称</td><td>Flag</td><td>值</td><td>最差</td><td>阈值</td><td>类型</td><td>更新</td><td>失败</td><td style="width:145px">RAW</td></thead>
+<tbody id="disk_attributes"><tr><td colspan='10'><div class="spinner"></div></td></tr></tbody>
+</table>
+<input type="button" value="完成" onclick="done()">
+
+> 此列表显示此磁盘支持的 SMART 属性. 有关每个 SMART 属性的更多信息, 建议使用在线搜索.
+>
+> *橙色* 的属性可能需要引起您的注意. 它们的 '原始值' *大于零*, 可能表示磁盘有故障.
+>
+> 当特定属性原始值开始随时间增加时, 需要特别注意. 如有疑问, 请咨询 Limetech 论坛以获取建议.

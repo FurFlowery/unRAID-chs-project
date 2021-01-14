@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# usage: share_size <user-share> <output-file>
+
+# Creates an "ini" output file suitable for php parse_ini_function which describes
+# the size <user-share> takes up on the cache disk and each data disk.  Since this
+# uses the 'du' command, could take awhile.
+
+share="$1"
+output="/var/local/emhttp/$share.$2"
+total=0;
+
+echo "Computing disk usage for $share..."
+rm -f "$output"
+
+function check {
+  if [[ -e "$1/$2" ]] ; then
+    echo "calculating $1 usage..."
+    size=$(du -s "$1/$2"|cut -f1)
+    echo "$(basename "$1")=$size" >>"$output"
+    total=$(($total + $size))
+  fi
+}
+
+check "/mnt/cache" "$share"
+while IFS=$'\n' read -r disk; do
+  check "$disk" "$share"
+done <<< $(ls -vd /mnt/disk[0-9]*)
+echo "disk.total=$total" >>"$output"
+echo "total disk usage: $total"

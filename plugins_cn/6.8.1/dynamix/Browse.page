@@ -1,0 +1,41 @@
+Title="$dir 索引"
+Tag="navicon"
+Markdown="false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<style>
+.loc{text-align:left;white-space:nowrap}
+#title span.left{text-transform:none}
+</style>
+<script>
+$(function(){
+  $.get('/webGui/include/Browse.php',{dir:"<?=addslashes(urlencode($dir))?>",path:"<?=$path?>",user:<?=strpos($dir,'/mnt/user')===0?1:0?>},function(data){
+    var table = $('table.indexer');
+    var col = $.cookie('col')||1;
+    var dir = $.cookie('dir')||0;
+    table.html(data);
+    table.bind('sortEnd',function(e,t){
+      var sort = e.target.config.sortList.toString().split(',');
+      $.cookie('col',sort[0],{path:'/'});
+      $.cookie('dir',sort[1],{path:'/'});
+    });
+    table.tablesorter({sortList:[[col,dir],[1,0]],sortAppend:[[1,0]],textAttribute:'data'});
+  });
+});
+</script>
+<table class="indexer tablesorter shift">
+ <thead><tr><th>类型</th><th class='sorter-text'>名称</th><th>大小</th><th>最后修改</th><th>位置</th></tr></thead>
+ <tbody><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody>
+</table>
+<input type="button" value="完成" onclick="done('Browse')">

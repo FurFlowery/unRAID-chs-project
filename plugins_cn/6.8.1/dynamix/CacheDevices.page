@@ -1,0 +1,79 @@
+Menu="Main:2"
+Title="缓存设备"
+Tag="bullseye"
+Cond="($var['fsState']=='Stopped' || $var['cacheSbNumDisks'])"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function cache_status() {
+  $.post('/webGui/include/DeviceList.php',{path:'<?=$path?>',device:'cache'},function(data) {
+    if (data) {$('#cache_device').html(data); display_diskio();}
+<?if ($var['fsState']=='Started'):?>
+    timers.cache_status = setTimeout(cache_status,3000);
+<?endif;?>
+  });
+}
+<?if ($var['fsState']=='Started'):?>
+$('#tab2').bind({click:function() {$('i.toggle').show('slow');}});
+<?endif;?>
+
+cache_status();
+</script>
+
+<table class="disk_status wide">
+<thead><tr><td>设备</td><td>识别号</td><td>温度</td><td>读取</td><td>写入</td><td>错误</td><td>文件系统</td><td>大小</td><td>已使用</td><td>剩余</td><td>查看</td></tr></thead>
+<tbody id="cache_device">
+<?
+foreach ($disks as $disk):
+  if ($disk['type']=='Cache') echo "<tr><td colspan='11'>&nbsp;</td></tr>";
+endforeach;
+?>
+</tbody>
+</table>
+
+> **彩色状态指示器** *高速缓存设备* 中每行开头的颜色指示器的意义如下:
+>
+> <i class='fa fa-circle orb green-orb'></i>正常运行, 设备处于活动状态.
+>
+> <i class='fa fa-circle orb grey-orb'></i>设备处于待机模式 (休眠).
+>
+> <i class='fa fa-square orb blue-orb'></i>新设备.
+>
+> <i class='fa fa-square orb grey-orb'></i>没有设备, 位置为空.
+>
+> **缓存** 是设备或设备池, 位于 Unraid 阵列 之外. 可以将其导出以进行网络访问
+> 就像一个阵列设备. 在 Unraid 阵列之外可以显着加快写入访问速度.
+>
+> 有两种方法可以配置缓存:
+>
+> 1.作为单个设备.
+> 2.作为多设备池.
+>
+> 当配置为单个设备时, 您可以使用任何受支持的文件系统 (btrfs, reiserfs, 或者 xfs) 来格式化设备.
+> 这种配置提供了最高的性能，但代价是没有数据保护 - 如果
+> 单个高速缓存设备出现故障, 其中包含的所有数据可能会丢失.
+>
+> 当配置为多设备池时, Unraid OS 将自动选择 *btrfs-raid1* 格式化 (用于数据和元数据).
+> btrfs 允许向池中添加任意数量的设备, 并且保证每个数据副本都写入两个不同的设备
+> 因此, 设备池可以承受单个磁盘故障而不丢失数据.
+>
+> 启用 [用户共享](/Settings/ShareSettings) 时, 
+> 可以将用户共享配置为自动使用缓存以加快写入速度, 
+> 可以计划定期运行名为 *mover* 的特殊后台进程
+> 以将用户共享文件从缓存移到阵列上.
+
+<?if ($var['fsState'] == "Stopped"):?>
+<div></div>
+> **插槽** 选择服务器中为缓存设备指定的设备插槽数.
+<?endif;?>

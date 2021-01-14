@@ -1,0 +1,100 @@
+Menu="hidden"
+Title="插件商店"
+Icon="community.applications.png"
+---
+<?
+###############################################################
+#                                                             #
+# Community Applications copyright 2015-2021, Andrew Zawadzki #
+#                   Licenced under GPLv2                      #
+#                                                             #
+###############################################################
+
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: "/usr/local/emhttp";
+
+$plugin = "community.applications";
+
+require_once "$docroot/plugins/$plugin/include/paths.php";
+require_once "$docroot/plugins/$plugin/include/helpers.php";
+
+$cfg = parse_plugin_cfg($plugin);
+$apps = readJsonFile($caPaths['community-templates-info']);
+$repositories = [];
+
+foreach ($apps as $template) {
+	if ($template['BranchID'] || $template['Blacklist'] || $template['Deprecated']) continue;
+	$repositories[str_replace("'","*",$template['Repo'])]++;
+}
+arsort($repositories);
+
+
+function tr($string,$ret=false) {
+	if ( function_exists("_") )
+		$string =  str_replace('"',"&#34;",str_replace("'","&#39;",_($string)));
+	if ( $ret )
+		return $string;
+	else
+		echo $string;
+}
+?>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="<?=$plugin?>/<?=$plugin?>.cfg">
+
+<?tr("隐藏不推荐使用的插件:");?>
+: <select name='hideDeprecated' size='1'>
+	<?=mk_option($cfg['hideDeprecated'], "true", tr("启用",true))?>
+	<?=mk_option($cfg['hideDeprecated'], "false", tr("禁用",true))?>
+	</select>
+
+> <?tr("此设置从在线插件列表中隐藏已弃用的插件。但是，已弃用的插件仍将显示在已安装和以前的插件列表中。");?>
+
+<?tr("隐藏不兼容的插件:");?>
+: <select name='hideIncompatible' size='1'>
+	<?=mk_option($cfg['hideIncompatible'], "true", tr("启用",true))?>
+	<?=mk_option($cfg['hideIncompatible'], "false", tr("禁用",true))?>
+	</select>
+
+> <?tr("此设置将隐藏与您Unraid版本不兼容的插件。");?>
+
+<?tr("启用重装插件按钮:");?>
+: <select name='defaultReinstall' size='1'>
+	<?=mk_option($cfg['defaultReinstall'],'false',tr("No",true))?>
+	<?=mk_option($cfg['defaultReinstall'],'true',tr("Yes",true))?>
+	</select>
+
+> <?tr("此设置启用插件页面弹出窗口的重装按钮，您可以使用插件默认值重装插件。但是有时可能会造成一些问题，仅在您希望重新安装运行插件时使用。");?>
+
+<?tr("启用来自DockerHub的额外搜索结果:");?>
+: <select name="dockerSearch" size="1">
+	<?=mk_option($cfg['dockerSearch'], "no", tr("禁用",true))?>
+	<?=mk_option($cfg['dockerSearch'], "yes", tr("启用",true))?>
+	</select>
+
+> <?tr("启用此设置，插件商店可以从DockerHub上搜索其他结果，请注意，该设置需要启用Docker。");?>
+
+<?tr("允许插件商店发送任何紧急信息:");?>
+: <select name='notifications' size='1'>
+	<?=mk_option($cfg['notifications'],"yes",tr("启用",true))?>
+	<?=mk_option($cfg['notifications'],"no",tr("禁用",true))?>
+	</select>
+
+> <?tr("此设置运行插件商店定期扫描您的系统，并警告您是否存在以下情况:");?><br>
+> <?tr("1. 插件中已知的恶意软件和安全漏洞");?><br>
+> <?tr("2. Unraid OS中的重要安全漏洞");?><br>
+> <?tr("3. 任何可能已安装的严重阻碍服务器运行的插件或应用程序");?>
+
+<?tr("保存应用商店调试信息:");?>
+: <select name='debugging' size='1'>
+	<?=mk_option($cfg['debugging'],"yes",tr("启用",true))?>
+	<?=mk_option($cfg['debugging'],"no",tr("禁用",true))?>
+	</select>
+	
+> <?tr("调试功能：建议仅在社区插件作者的建议下启用此设置")?>
+
+&nbsp;
+: <input type="submit" name="#apply" value="<?tr("应用");?>" id='Apply'><input type="button" id="DONE" value="<?tr("完成");?>" onclick="done()">
+
+<center><a href="https://forums.unraid.net/topic/38582-plug-in-community-applications/" target="_blank"><?tr("支持社区");?></a></center>
+
+</form>

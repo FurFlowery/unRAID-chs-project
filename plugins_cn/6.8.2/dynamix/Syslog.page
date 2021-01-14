@@ -1,0 +1,106 @@
+Menu="UNRAID-OS"
+Title="系统日志"
+Icon="icon-log"
+Tag="list"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$zip = htmlspecialchars(str_replace(' ','_',strtolower($var['NAME'])));
+$log = '/var/log/syslog';
+$cfg = '/boot/config/rsyslog.cfg';
+$select  = '';
+if (file_exists($cfg)) {
+  $syslog = parse_ini_file($cfg);
+  if ($syslog['local_server'] && $logs = glob($syslog['server_folder'].'/syslog-*.log',GLOB_NOSORT)) {
+    $select = "<select onchange='showLog(this.value)'>";
+    $select .= mk_option(1,$log,'syslog');
+    natsort($logs);
+    foreach ($logs as $file) $select .= mk_option(1,$file,basename($file));
+    $select .= "</select>";
+  }
+}
+?>
+<script>
+var logfile = '<?=$log?>';
+
+function zipfile(){
+  var d = new Date();
+  return '<?=$zip?>-'+logfile.split('/').reverse()[0].replace('.log','')+'-'+d.toISOString().substr(0,16).replace(/[-:]/g,'').replace('T','-')+'.zip';
+}
+function cleanUp(file) {
+  if (document.hasFocus()) {
+    $('input[value="下载中..."]').val('下载').prop('disabled',false);
+    $.post('/webGui/include/Download.php',{cmd:'delete',file:file});
+  } else {
+    setTimeout(function(){cleanUp(file);},2000);
+  }
+}
+function syslog(file) {
+  $('input[value="下载"]').val('下载中...').prop('disabled',true);
+  $.post('/webGui/include/Download.php',{cmd:'save',source:logfile,file:file},function(zip) {
+    location = zip;
+    setTimeout(function(){cleanUp(file);},4000);
+  });
+}
+function highlight(checked,line) {
+  var o = checked ? '-' : '';
+  var n = ($('span.text').css('display')=='none' && !checked) ? 'none' : '';
+  switch (line) {
+    case 'E': $('span.'+o+'error').css('display',n); $('span.error'+o).toggleClass('error -error error-'); break;
+    case 'W': $('span.'+o+'warn').css('display',n); $('span.warn'+o).toggleClass('warn -warn warn-'); break;
+    case 'S': $('span.'+o+'system').css('display',n); $('span.system'+o).toggleClass('system -system system-'); break;
+    case 'A': $('span.'+o+'array').css('display',n); $('span.array'+o).toggleClass('array -array array-'); break;
+    case 'L': $('span.'+o+'login').css('display',n); $('span.login'+o).toggleClass('login -login login-'); break;
+    case 'N': $('span.text,span[class^="-"]').css('display',checked ? 'none':''); break;
+  }
+  $('span.label').show();
+}
+function toggle(checked) {
+  highlight(checked,'E');
+  highlight(checked,'W');
+  highlight(checked,'S');
+  highlight(checked,'A');
+  highlight(checked,'L');
+  $('span.label input[type=checkbox]').not('.ctrl').prop('checked',checked);
+}
+function resize() {
+  $('pre.up').height(Math.max(window.innerHeight-320,330));
+}
+function showLog(log) {
+  logfile = log;
+  $('span.label input[type=checkbox]').prop('checked',true);
+  $('span.label').each(function(){
+    var type = $(this).attr('class').replace('label','').replace(/-/g,'');
+    $(this).removeClass().addClass(type+' label');
+  });
+  $.post('/webGui/include/Syslog.php',{log:log},function(data){
+    $('pre.up').html(data);
+<?if ($display['resize']):?>
+    resize();
+<?endif;?>
+  });
+}
+$(function() {
+  $.post('/webGui/include/Syslog.php',{log:'<?=$log?>'},function(data){
+    $('pre.up').html(data);
+<?if ($display['resize']):?>
+    resize();
+    $(window).bind('resize',function(){resize();});
+<?endif;?>
+  });
+});
+$('.tabs').append("<span class='status'><?=$select?><span class='lite label'><label>文本<input type='checkbox' class='ctrl' onclick='highlight(!this.checked,\"N\")' checked></label></span><span class='error label'><label>错误<input type='checkbox' onclick='highlight(this.checked,\"E\")' checked></label></span><span class='warn label'><label>警告<input type='checkbox' onclick='highlight(this.checked,\"W\")' checked></label></span><span class='system label'><label>系统<input type='checkbox' onclick='highlight(this.checked,\"S\")' checked></label></span><span class='array label'><label>阵列<input type='checkbox' onclick='highlight(this.checked,\"A\")' checked></label></span><span class='login label'><label>登录<input type='checkbox' onclick='highlight(this.checked,\"L\")' checked></label></span><span class='lite label'><input type='checkbox' class='ctrl' onclick='toggle(this.checked)' checked></span></span>");
+</script>
+<pre class='up'></pre>
+<input type="button" value="下载" onclick="syslog(zipfile())"><input type="button" value="刷新" onclick="showLog(logfile)"><input type="button" value="完成" onclick="done()">

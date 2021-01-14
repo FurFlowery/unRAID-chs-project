@@ -1,0 +1,3 @@
+#!/bin/bash
+POLLER=/usr/local/emhttp/webGui/scripts/upnp_poller
+[[ -z $(pgrep -f $POLLER) ]] && $POLLER

@@ -1,0 +1,92 @@
+Menu="OtherSettings"
+Title="日期和时间"
+Icon="icon-clock"
+Tag="clock-o"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?$keys = explode("\n", file_get_contents('webGui/include/timezones.key'));?>
+
+<form markdown="1" name="datetime_settings" method="POST" action="/update.htm" target="progressFrame">
+当前日期和时间:
+: <?=my_time(time())?>
+
+时区:
+: <select name="timeZone" size="1"><?
+  foreach ($keys as $key) {
+    list($timezone, $city) = explode('|', $key);
+    echo mk_option($var['timeZone'], $timezone, $city);
+  }
+?></select>
+
+> 从下拉列表中选择您适用的时区.
+
+使用 NTP:
+: <select name="USE_NTP" size="1" class="narrow" onchange="checkDateTimeSettings(this.form)">
+  <?=mk_option($var['USE_NTP'], "yes", "是")?>
+  <?=mk_option($var['USE_NTP'], "no", "否")?>
+  </select>
+
+> 选择 '是' 以使用网络时间协议来保持服务器时间准确.
+> 强烈建议您使用网络时间服务器, 特别是如果您打算使用 Active Directory.
+>
+> 注意: 如果使用 `pool.ntp.org` 时间服务器, 也请参考[其文档]（http://www.pool.ntp.org/en/use.html）.
+
+NTP 服务器 1:
+: <input type="text" name="NTP_SERVER1" maxlength="80" value="<?=htmlspecialchars($var['NTP_SERVER1'])?>">
+
+> 这是要使用的主要 NTP 服务器. 输入 FQDN 或 IP 地址.
+
+NTP 服务器 2:
+: <input type="text" name="NTP_SERVER2" maxlength="80" value="<?=htmlspecialchars($var['NTP_SERVER2'])?>">
+
+> 如果 NTP 服务器 1 关闭, 则这是备用 NTP 服务器.
+
+NTP 服务器 3:
+: <input type="text" name="NTP_SERVER3" maxlength="80" value="<?=htmlspecialchars($var['NTP_SERVER3'])?>">
+
+> 如果 NTP 服务器 1, 2 都关闭, 则这是备用 NTP 服务器.
+
+NTP 服务器 4:
+: <input type="text" name="NTP_SERVER4" maxlength="80" value="<?=htmlspecialchars($var['NTP_SERVER4'])?>">
+
+> 如果 NTP 服务器 1, 2, 3 都关闭, 则这是备用 NTP 服务器.
+
+新的时间和日期:
+: <input type="text" name="newDateTime" maxlength="40" value="<?=my_time(time(), "%F %T")?>">
+
+> 输入当前时间. 使用格式 YYYY-MM-DD HH:MM:SS. 使用 NTP 时显示为灰色.
+
+&nbsp;
+: <input type="submit" name="setDateTime" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<script>
+function checkDateTimeSettings() {
+  form = document.datetime_settings;
+  if (form.USE_NTP.value=="yes") {
+    form.newDateTime.disabled=true;
+    form.NTP_SERVER1.disabled=false;
+    form.NTP_SERVER2.disabled=false;
+    form.NTP_SERVER3.disabled=false;
+    form.NTP_SERVER4.disabled=false;
+  } else {
+    form.newDateTime.disabled=false;
+    form.NTP_SERVER1.disabled=true;
+    form.NTP_SERVER2.disabled=true;
+    form.NTP_SERVER3.disabled=true;
+    form.NTP_SERVER4.disabled=true;
+  }
+}
+$(checkDateTimeSettings);
+</script>

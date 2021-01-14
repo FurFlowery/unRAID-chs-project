@@ -1,0 +1,517 @@
+Menu="parentname:nnn"
+Title="接口 ethX"
+Tag="icon-ethernet"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$locked = locked('ethX','ethX');
+
+// get VLAN interfaces
+$vlan_ethX = $sort_ethX = [];
+if (!$locked && isset($ethX)) foreach (vlanID($ethX) as $key => $val) {$vlan_ethX[] = index($key); $sort_ethX[] = (int)$val;}
+array_multisort($sort_ethX,$vlan_ethX);
+
+$cmd = 'Down';
+$more = true;
+if (strpos($locked,'bond')===0 || strpos($locked,'br')===0) {
+  list($master_ethX,$root) = explode(' ',$locked);
+  $reason = "member of $master_ethX (see interface $root)";
+  $class = 'green-text';
+} elseif (!exec("ip link show ethX|grep -om1 'UP>'")) {
+  $reason = "关闭 (不活动)";
+  $class = 'blue-text';
+  $cmd = 'Up';
+} elseif (empty($ethX)) {
+  $reason = "not configured";
+  $class = 'red-text';
+} else {
+  $more = false;
+  $class = '';
+}
+?>
+<script>
+function portcheck_ethX() {
+  $.post('/webGui/include/CheckPort.php',{port:'ethX'},function(text) {
+    var html = $('#user-notice').html();
+    if (!html || html.indexOf('ethX')>0) showNotice(text);
+    setTimeout(portcheck_ethX,10000);
+  });
+}
+$(function() {
+  var ctrl = "<span id='wait_ethX' class='status vshift red-text' style='display:none;font-size:1.2rem;font-style:italic'><i class='fa fa-spinner fa-spin'></i>请稍候...正在配置接口</span>";
+  var form = document.ethX_settings;
+<?if ($tabbed && !$service):?>
+  $('#tabX').bind({click:function(){
+    $('#bond-ethX').dropdownchecklist('destroy').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>});
+    $('#bridge-ethX').dropdownchecklist('destroy').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>});
+  }});
+<?endif;?>
+  if (!$.cookie('#view-ethX')) {$('#view-ethX').show(); $('#tag-ethX').removeClass('fa-chevron-down').addClass('fa-chevron-up');}
+<?foreach ($vlan_ethX as $i):?>
+  if (!$.cookie('#view-ethX-<?=$i?>')) {$('#view-ethX-<?=$i?>').show(); $('#tag-ethX-<?=$i?>').removeClass('fa-chevron-down').addClass('fa-chevron-up');}
+<?endforeach;?>
+  $('#bond-ethX').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>});
+  $('#bridge-ethX').dropdownchecklist({emptyText:'无', width:<?=$width[0]?>});
+  checkBondingSettings(form,0,'ethX');
+  checkBridgingSettings(form,0,'ethX');
+  checkNetworkAccess(form,'ethX');
+  selectProtocol(form,'ethX');
+<?if (!$tabbed):?>
+  $('div#title').each(function(){
+    if ($(this).text().indexOf('Interface ethX')==0) $(this).find('span.left').append(ctrl);
+  });
+<?endif;?>
+<?if ($master_ethX):?>
+  $('div.slave-ethX').hide();
+  disableForm(form);
+<?elseif ($service):?>
+  disableForm(form);
+<?endif;?>
+<?if ($no_eth0):?>
+  $('input[name="#shut_ethX"]').prop('disabled',true);
+<?endif;?>
+  setTimeout(portcheck_ethX,Number('ethX'.substr(3))*1000);
+});
+</script>
+<form markdown="1" name="ethX_settings" method="POST" action="/update.php" target="progressFrame" onchange="exitCode(this,false)" onsubmit="return prepareSettings(this)">
+<input type="hidden" name="#file" value="<?=$ini?>">
+<input type="hidden" name="#include" value="/webGui/include/update.ethernet.php">
+<input type="hidden" name="#section" value="ethX">
+<input type="hidden" name="#command" value="/webGui/scripts/netconfig">
+<input type="hidden" name="#arg[1]" value="">
+<input type="hidden" name="BONDNAME" value="bondX">
+<input type="hidden" name="BONDING_MIIMON" value="100">
+<input type="hidden" name="BRNAME" value="brX">
+<input type="hidden" name="BRSTP" value="no">
+<input type="hidden" name="BRFD" value="0">
+接口说明:
+: <span class="status vshift"><i id="tag-ethX" class="fa fa-fw fa-chevron-down" style="cursor:pointer" onclick="viewToggle('ethX')"></i></span>
+<?if (!$more):?>
+  <input type="text" name="DESCRIPTION:0" maxlength="80" value="<?=htmlspecialchars($ethX["DESCRIPTION:0"])?>" onchange="exitCode(this.form,true)">
+<?else:?>
+  <span class="<?=$class?>"><?=$reason?></span>
+<?endif;?>
+
+> 使用此可选字段可提供有关连接目的的附加信息.
+
+
+<div markdown="1" id="view-ethX" style="display:none">
+MAC 地址:
+: <?=strtoupper(exec("ip link show ethX|grep -Pom1 'ether \K\S+'"))?>
+
+> 这是接口的硬件地址.
+> 启用标记后, 此接口上的所有 VLAN 将共享相同的硬件地址.
+
+<div markdown="1" class="slave-ethX">
+启用绑定:
+: <select name="BONDING" size="1" onchange="checkBondingSettings(this.form,1,'ethX')">
+  <?=mk_option($ethX['BONDING'], "no", "否");?>
+  <?=mk_option($ethX['BONDING'], "yes", "是");?>
+  </select>
+
+> 绑定是一种功能, 它将多个物理以太网接口组合成一个名为 **bond0** 的单个 *绑定* 接口.
+> 这可用于提高系统的连接冗余和/或吞吐量.
+> 支持不同的连接模式 (见下文), 但有些模式需要适当的开关支持.
+
+
+<div markdown="1" id="bond-members-ethX" style="display:none">
+绑定模式:
+: <select name="BONDING_MODE" size="1" onchange="checkBondingSettings(this.form,-1,'ethX')">
+  <?=mk_option($ethX['BONDING_MODE'], "0", "balance-rr (0)");?>
+  <?=mk_option($ethX['BONDING_MODE'], "1", "active-backup (1)",isset($ethX['BONDING_MODE'])?'':'selected');?>
+  <?=mk_option($ethX['BONDING_MODE'], "2", "balance-xor (2)");?>
+  <?=mk_option($ethX['BONDING_MODE'], "3", "broadcast (3)");?>
+  <?=mk_option($ethX['BONDING_MODE'], "4", "802.3ad (4)");?>
+  <?=mk_option($ethX['BONDING_MODE'], "5", "balance-tlb (5)");?>
+  <?=mk_option($ethX['BONDING_MODE'], "6", "balance-alb (6)");?>
+  </select>
+  <span id="attention0" style="display:none"><b>注意:</b> 此模式需要具有正确设置和支持的网络交换机...</span>
+
+> **模式 0 (balance-rr) 平衡负载模式**<br>
+> 传输数据包顺序是依次传输 (即: 第 1 个包走 eth0, 下一个包就走 eth1 一直循环下去, 直到最后一个传输完毕),
+> 此模式提供负载平衡和容错能力; 但是我们知道如果一个连接或者会话的数据包从不同的接口发出的话, 中途再经过不同的链路, 
+> 在客户端很有可能会出现数据包无序到达的问题, 而无序到达的数据包需要重新要求被发送, 这样网络的吞吐量就会下降.
+>
+> **模式 1 (active-backup) 主/备份策略 - 默认**<br>
+> 只有一个接口处于活动状态, 当一个宕掉另一个马上由备份转换为主接口. MAC 地址是外部可见得, 从外面看来, 
+> 绑定的 MAC 地址是唯一的, 以避免交换机发生混乱. 此模式只提供了容错能力; 由此可见此算法的优点是可以提供高网络连接的可用性,
+> 但是它的资源利用率较低, 只有一个接口处于工作状态, 在有 N 个网络接口的情况下, 资源利用率为 1/N.
+>
+> **模式 2 (balance-xor) 平衡策略**<br>
+> 基于指定的传输 HASH 策略传输数据包. 缺省的策略是 (源MAC地址 XOR 目标MAC地址) % 从接口数量。
+> 这将为每个目标 MAC 地址选择相同的从接口, 此模式提供负载平衡和容错能力.
+>
+> **模式 3 (broadcast) 广播策略**<br>
+> 在每个从接口上传输每个数据包，此模式提供了容错能力.
+>
+> **模式 4 (802.3ad) 动态链接聚合**<br>
+> 此模式称为 *动态链接聚合*. 它创建共享相同速度和双工设置的聚合组.
+> 它需要一个支持 IEEE 802.3ad 动态链路的交换机.
+> 传出流量的从端口选择是根据传输散列策略完成, 该策略可以通过 xmit_hash_policy 选项从默认 XOR 策略更改.
+> 请注意, 并非所有传输策略都符合 802.3ad, 特别是与 802.3ad 标准第 43.2.4 节的分组错误排序要求相对应.
+> 不同的对等实现对于不遵从性有不同的容忍度.
+>
+> **模式 5 (balance-tlb) 适配器传输负载均衡**<br>
+> 此模式称为 *自适应传输负载平衡*. 根据每个从接口上的当前负载和队列分配出的流量.
+> 当前从接口接收传入流量.
+>
+> **模式 6 (balance-alb) 适配器适应性负载均衡**<br>
+> 此模式称为 *自适应负载平衡*. This includes balance-tlb + receive load balancing (rlb) for IPV4 traffic.
+> 接收负载均衡是通过 ARP 协商实现的.
+> 绑定驱动程序截获服务器在离开时发送的 ARP 应答, 并用绑定中某个从端口的唯一硬件地址覆盖 src 硬件地址,
+> 以便不同的客户端为服务器使用不同的硬件地址.
+>
+> *模式 1 (active-backup) 是建议的设置. 其他模式允许您设置特定的环境, 但可能需要适当的交换机支持.
+> 选择不受支持的模式可能会导致通信中断.*
+
+bondX 绑定成员:
+: <select id="bond-ethX" name="BONDNICS" size="1" multiple="multiple" style="display:none">
+  <?=mk_option($ethX['BONDNICS'],'ethX','ethX','selected disabled')?>
+  <?foreach ($ports as $port):?>
+  <?if ($port!='ethX' && !locked('ethX',$port)) echo mk_option_check($ethX['BONDNICS'],$port,$port)?>
+  <?endforeach;?>
+  </select>
+
+> 选择哪些接口是 *bonded* 接口的成员. 默认情况下 ethX 是一个成员, 而其他接口是可选的.
+
+</div>
+
+启用桥接:
+: <select name="BRIDGING" size="1" onchange="checkBridgingSettings(this.form,1,'ethX')">
+  <?=mk_option($ethX['BRIDGING'], "no", "否");?>
+  <?=mk_option($ethX['BRIDGING'], "yes", "是");?>
+  </select>
+
+> 桥接是创建虚拟网桥并允许虚拟机直接与物理以太网端口通信的功能.
+
+<div markdown="1" id="bridge-members-ethX" style="display:none">
+brX 桥接的成员:
+: <select id="bridge-ethX" name="BRNICS" size="1" multiple="multiple" style="display:none">
+  <?=mk_option($ethX['BRNICS'],'ethX','ethX','selected disabled')?>
+  <?foreach ($ports as $port):?>
+  <?if ($port!='ethX' && !locked('ethX',$port)) echo mk_option_check($ethX['BRNICS'],$port,$port)?>
+  <?endforeach;?>
+  </select>
+
+> 选择哪些接口是 *bridged* 接口的成员. 默认情况下 ethX 是一个成员, 而其他接口是可选的.
+
+</div>
+</div>
+<div markdown="1" class="slave-ethX">
+网络协议:
+: <select name="PROTOCOL:0" size="1" onchange="selectProtocol(this.form,'ethX',0)">
+  <?=mk_option($ethX["PROTOCOL:0"], 'ipv4', '仅 IPv4');?>
+  <?=mk_option($ethX["PROTOCOL:0"], 'ipv6', '仅 IPv6');?>
+  <?=mk_option($ethX["PROTOCOL:0"], 'ipv4+ipv6', 'IPv4 + IPv6');?>
+  </select>
+
+> 选择要使用的协议. 默认情况下, 只使用 IPv4.<br>
+> 如果同时选择了 IPv4 和 IPv6, 则可以独立配置每个协议.
+
+<div markdown="1" class="ipv4-ethX-0" style="display:none">
+IPv4 地址分配:
+: <select name="USE_DHCP:0" size="1" onchange="selectProtocol(this.form,'ethX',0)">
+  <?=mk_option($ethX["USE_DHCP:0"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP:0"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP:0"], '', '无');?>
+  </select>
+
+> 可以进行以下设置:
+>
+> *自动* - 服务器将尝试从本地 DHCP 服务器获取 IPv4 地址<br>
+> *静态* - 已为此接口手动设置 IPv4 地址<br>
+> *无* - 不为接口分配 IPv4 地址
+
+<div markdown="1" class="more-ipv4-ethX-0" style="display:none">
+IPv4 地址:
+: <input type="text" name="IPADDR:0" maxlength="15" value="<?=$ethX["IPADDR:0"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">/<select name="NETMASK:0" size="1" class="slim">
+  <?=mk_option($ethX["NETMASK:0"], "255.0.0.0", "8");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.0.0", "16");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.128.0", "17");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.192.0", "18");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.224.0", "19");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.240.0", "20");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.248.0", "21");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.252.0", "22");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.254.0", "23");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.0", "24", $ethX["IPADDR:0"]?"":"selected");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.128", "25");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.192", "26");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.224", "27");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.240", "28");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.248", "29");?>
+  <?=mk_option($ethX["NETMASK:0"], "255.255.255.252", "30");?>
+  </select>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定系统的 IPv4 地址和掩码.
+
+IPv4 默认网关:
+: <input type="text" name="GATEWAY:0" maxlength="15" value="<?=$ethX["GATEWAY:0"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">
+  <input type="text" name="METRIC:0" min="1" max="9999" value="<?=$ethX["METRIC:0"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定路由器的 IPv4 地址.
+
+</div>
+</div>
+<div markdown="1" class="ipv6-ethX-0" style="display:none">
+IPv6 地址分配:
+: <select name="USE_DHCP6:0" size="1" onchange="selectProtocol(this.form,'ethX',0)">
+  <?=mk_option($ethX["USE_DHCP6:0"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP6:0"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP6:0"], '', '无');?>
+  </select>
+
+> 可以进行以下设置:
+>
+> *自动* - 服务器将尝试从本地 DHCP 服务器或路由器播发 (RA) 获取 IPv6 地址<br>
+> *静态* - 已为此接口手动设置 IPv6 地址<br>
+> *无* - 不为接口分配 IPv6 地址
+
+<div markdown="1" class="more-ipv6-ethX-0" style="display:none">
+IPv6 地址:
+: <input type="text" name="IPADDR6:0" maxlength="39" value="<?=$ethX["IPADDR6:0"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">/<input type="number" name="NETMASK6:0" min="1" max="128" value="<?=$ethX["NETMASK6:0"]?>" class="slim">
+
+> Greyed out when using automatic IP assignment. Otherwise specify here the IPv6 address and prefix of the interface.
+
+IPv6 默认网关:
+: <input type="text" name="GATEWAY6:0" maxlength="39" value="<?=$ethX["GATEWAY6:0"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">
+  <input type="text" name="METRIC6:0" min="1" max="9999" value="<?=$ethX["METRIC6:0"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定路由器的 IPv6 地址.
+
+IPv6 隐私扩展:
+: <select name="PRIVACY6:0" size="1">
+  <?=mk_option($ethX["PRIVACY6:0"], "0", "禁用");?>
+  <?=mk_option($ethX["PRIVACY6:0"], "2", "启用");?>
+  </select>
+
+> 根据 RFC4941 启用或禁用生成随机 IPv6 接口标识符. 这类似于 Windows 机器上的临时 IPv6 地址生成.
+
+</div>
+</div>
+期望的 MTU 值:
+: <input type="number" name="MTU" min="68" max="9198" value="<?=$locked?$ethX['MTU']:$ethX['MTU']?>" class="narrow" placeholder="1500">
+
+> 这是要在物理以太网接口上使用的 MTU 大小.
+> 如果留空, MTU 将自动设定 (默认为 1500 bytes).
+
+启用 VLAN:
+: <select name="TYPE" size="1" onchange="checkNetworkAccess(this.form,'ethX')">
+  <?=mk_option($ethX['TYPE'], 'access', '否');?>
+  <?=mk_option($ethX['TYPE'], 'trunk', '是');?>
+  </select>
+
+> 默认情况下不配置 VLAN.<br>
+> 启用 VLAN 会扩展同一物理连接上的逻辑连接数.
+>
+> 注意: 使用此功能时, 路由器和交换机也必须支持 VLAN.
+
+</div>
+</div>
+<div id='index-ethX-0'></div>
+<?foreach ($vlan_ethX as $i):?>
+<div markdown="1" id="index-ethX-<?=$i?>" class="access-ethX shade-<?=$display['theme']?>" style="display:none">
+接口说明:
+: <span class="status vshift"><i id="tag-ethX-<?=$i?>" class="fa fa-fw fa-chevron-down" style="cursor:pointer" onclick="viewToggle('ethX','<?=$i?>')"></i></span>
+  <input type="text" name="DESCRIPTION:<?=$i?>" maxlength="80" value="<?=htmlspecialchars($ethX["DESCRIPTION:$i"])?>" onchange="exitCode(this.form,true)">
+
+> 使用此可选字段可提供有关的附加信息.
+
+<div markdown="1" id="view-ethX-<?=$i?>" style="display:none">
+VLAN 号:
+: <input type="number" name="VLANID:<?=$i?>" min="1" max="4095" value="<?=$ethX["VLANID:$i"]?>" class="narrow gap" required>
+  <?if (!$service):?><input type="button" class="form" value="Delete VLAN" onclick="removeVLAN($('#index-ethX-<?=$i?>'))"><?endif;?>
+
+> 给每个 VLAN 分配一个唯一的标识符. 数字范围从 1-4095.
+
+网络协议:
+: <select name="PROTOCOL:<?=$i?>" size="1" onchange="selectProtocol(this.form,'ethX',<?=$i?>)">
+  <?=mk_option($ethX["PROTOCOL:$i"], 'ipv4', '仅 IPv4');?>
+  <?=mk_option($ethX["PROTOCOL:$i"], 'ipv6', '仅 IPv6');?>
+  <?=mk_option($ethX["PROTOCOL:$i"], 'ipv4+ipv6', 'IPv4 + IPv6');?>
+  </select>
+
+<div markdown="1" class="ipv4-ethX-<?=$i?>" style="display:none">
+IPv4 地址分配:
+: <select name="USE_DHCP:<?=$i?>" size="1" onchange="selectProtocol(this.form,'ethX',<?=$i?>)">
+  <?=mk_option($ethX["USE_DHCP:$i"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP:$i"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP:$i"], '', '无');?>
+  </select>
+
+> 可以进行以下设置:
+>
+> *自动* - 服务器将尝试从本地 DHCP 服务器获取 IPv4 地址<br>
+> *静态* - 已为此接口手动设置 IPv4 地址<br>
+> *无* - 不为接口分配 IPv4 地址
+
+<div markdown="1" class="more-ipv4-ethX-<?=$i?>" style="display:none">
+IPv4 地址:
+: <input type="text" name="IPADDR:<?=$i?>" maxlength="15" value="<?=$ethX["IPADDR:$i"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">/<select name="NETMASK:<?=$i?>" size="1" class="slim">
+  <?=mk_option($ethX["NETMASK:$i"], "255.0.0.0", "8");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.0.0", "16");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.128.0", "17");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.192.0", "18");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.224.0", "19");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.240.0", "20");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.248.0", "21");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.252.0", "22");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.254.0", "23");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.0", "24", $ethX["IPADDR:$i"]?"":"selected");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.128", "25");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.192", "26");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.224", "27");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.240", "28");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.248", "29");?>
+  <?=mk_option($ethX["NETMASK:$i"], "255.255.255.252", "30");?>
+  </select>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定系统的 IPv4 地址和掩码.
+
+IPv4 默认网关:
+: <input type="text" name="GATEWAY:<?=$i?>" maxlength="15" value="<?=$ethX["GATEWAY:$i"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">
+  <input type="text" name="METRIC:<?=$i?>" min="1" max="9999" value="<?=$ethX["METRIC:$i"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定路由器的 IPv4 地址.
+
+</div>
+</div>
+<div markdown="1" class="ipv6-ethX-<?=$i?>" style="display:none">
+IPv6 地址分配:
+: <select name="USE_DHCP6:<?=$i?>" size="1" onchange="selectProtocol(this.form,'ethX',<?=$i?>)">
+  <?=mk_option($ethX["USE_DHCP6:$i"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP6:$i"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP6:$i"], '', '无');?>
+  </select>
+
+> 可以进行以下设置:
+>
+> *自动* - 服务器将尝试从本地 DHCP 服务器或路由器播发 (RA) 获取 IPv6 地址<br>
+> *静态* - 已为此接口手动设置 IPv6 地址<br>
+> *无* - 不为接口分配 IPv6 地址 (仅适用于 VLAN)
+
+<div markdown="1" class="more-ipv6-ethX-<?=$i?>" style="display:none">
+IPv6 地址:
+: <input type="text" name="IPADDR6:<?=$i?>" maxlength="39" value="<?=$ethX["IPADDR6:$i"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">/<input type="number" name="NETMASK6:<?=$i?>" min="1" max="128" value="<?=$ethX["NETMASK6:$i"]?>" class="slim">
+
+> 使用自动 IP 分配时将会变灰. 否则请在此处指定系统的IPv6地址和前缀.
+
+IPv6 默认网关:
+: <input type="text" name="GATEWAY6:<?=$i?>" maxlength="39" value="<?=$ethX["GATEWAY6:$i"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">
+  <input type="text" name="METRIC6:<?=$i?>" min="1" max="9999" value="<?=$ethX["METRIC6:$i"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+> 使用自动 IP 分配时将会变灰. 否则在此指定路由器的 IPv6 地址.
+
+IPv6 隐私扩展:
+: <select name="PRIVACY6:<?=$i?>" size="1">
+  <?=mk_option($ethX["PRIVACY6:$i"], "0", "禁用");?>
+  <?=mk_option($ethX["PRIVACY6:$i"], "2", "启用");?>
+  </select>
+
+> 根据 RFC4941 启用或禁用生成随机 IPv6 接口标识符. 这类似于 Windows 机器上的临时 IPv6 地址生成.
+
+</div>
+</div>
+</div>
+</div>
+<?endforeach;?>
+
+&nbsp;
+: <input type="submit" value="Apply" onclick="$('#wait_<?=$tabbed?'eth0':'ethX'?>').show()" disabled><input type="button" value="完成" onclick="done()">
+<input type="button" name="#shut_ethX" value="Port <?=$cmd?>" onclick="portToggle('ethX','<?=$cmd?>')">
+<?if (!$service):?>
+<input type="button" class="access-ethX" value="Add VLAN" onclick="addVLAN('ethX')" style="display:none">
+<?else:?><?=$service?> 必须为 <span class='strong big'>已停止</span> 才能更改 (请查阅 [设置](/Settings))<?endif;?>
+</form>
+
+<script markdown="1" type="text/html" id="network-template-ethX">
+<div markdown="1" id="index-ethX-INDEX" class="access-ethX shade-<?=$display['theme']?>">
+接口说明:
+: <span class="status vshift"><i id="tag-ethX-INDEX" class="fa fa-fw fa-chevron-up" style="cursor:pointer" onclick="viewToggle('ethX','INDEX')"></i></span>
+  <input type="text" name="DESCRIPTION:INDEX" maxlength="80" value="<?=htmlspecialchars($ethX["DESCRIPTION:INDEX"])?>" onchange="exitCode(this.form,true)">
+
+<div markdown="1" id="view-ethX-INDEX">
+VLAN 号:
+: <input type="number" name="VLANID:INDEX" min="1" max="4095" value="<?=$ethX["VLANID:INDEX"]?>" class="narrow gap" required>
+  <input type="button" class="form" value="Delete VLAN" onclick="removeVLAN($('#index-ethX-INDEX'))">
+
+网络协议:
+: <select name="PROTOCOL:INDEX" size="1" onchange="selectProtocol(this.form,'ethX',INDEX)">
+  <?=mk_option($ethX["PROTOCOL:INDEX"], 'ipv4', '仅 IPv4');?>
+  <?=mk_option($ethX["PROTOCOL:INDEX"], 'ipv6', '仅 IPv6');?>
+  <?=mk_option($ethX["PROTOCOL:INDEX"], 'ipv4+ipv6', 'IPv4 + IPv6');?>
+  </select>
+
+<div markdown="1" class="ipv4-ethX-INDEX" style="display:none">
+IPv4 地址分配:
+: <select name="USE_DHCP:INDEX" size="1" onchange="selectProtocol(this.form,'ethX',INDEX)">
+  <?=mk_option($ethX["USE_DHCP:INDEX"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP:INDEX"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP:INDEX"], '', '无');?>
+  </select>
+
+<div markdown="1" class="more-ipv4-ethX-INDEX" style="display:none">
+IPv4 地址:
+: <input type="text" name="IPADDR:INDEX" maxlength="15" value="<?=$ethX["IPADDR:INDEX"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">/<select name="NETMASK:INDEX" size="1" class="slim">
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.0.0.0", "8");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.0.0", "16");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.128.0", "17");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.192.0", "18");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.224.0", "19");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.240.0", "20");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.248.0", "21");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.252.0", "22");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.254.0", "23");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.0", "24", "selected");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.128", "25");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.192", "26");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.224", "27");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.240", "28");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.248", "29");?>
+  <?=mk_option($ethX["NETMASK:INDEX"], "255.255.255.252", "30");?>
+  </select>
+
+IPv4 默认网关:
+: <input type="text" name="GATEWAY:INDEX" maxlength="15" value="<?=$ethX["GATEWAY:INDEX"]?>" class="narrow" pattern="<?=$validIP4?>" title="IPv4 地址 A.B.C.D">
+  <input type="text" name="METRIC:INDEX" min="1" max="9999" value="<?=$ethX["METRIC:INDEX"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+</div>
+</div>
+<div markdown="1" class="ipv6-ethX-INDEX" style="display:none">
+IPv6 地址分配:
+: <select name="USE_DHCP6:INDEX" size="1" onchange="selectProtocol(this.form,'ethX',INDEX)">
+  <?=mk_option($ethX["USE_DHCP6:INDEX"], 'yes', '自动');?>
+  <?=mk_option($ethX["USE_DHCP6:INDEX"], 'no', '静态');?>
+  <?=mk_option($ethX["USE_DHCP6:INDEX"], '', '无');?>
+  </select>
+
+<div markdown="1" class="more-ipv6-ethX-INDEX" style="display:none">
+IPv6 地址:
+: <input type="text" name="IPADDR6:INDEX" maxlength="39" value="<?=$ethX["IPADDR6:INDEX"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">/<input type="number" name="NETMASK6:INDEX" min="1" max="128" value="<?=$ethX["NETMASK6:INDEX"]?>" class="slim">
+
+IPv6 默认网关:
+: <input type="text" name="GATEWAY6:INDEX" maxlength="39" value="<?=$ethX["GATEWAY6:INDEX"]?>" pattern="<?=$validIP6?>" title="IPv6 地址 nnnn:xxxx::yyyy">
+  <input type="text" name="METRIC6:INDEX" min="1" max="9999" value="<?=$ethX["METRIC6:INDEX"]?>" class="slim"><i class="fa fa-sort-numeric-asc"></i> <em>optional metric (lowest is preferred)</em>
+
+IPv6 隐私扩展:
+: <select name="PRIVACY6:INDEX" size="1">
+  <?=mk_option($ethX['PRIVACY6:INDEX'], "0", "禁用");?>
+  <?=mk_option($ethX['PRIVACY6:INDEX'], "2", "启用");?>
+  </select>
+
+</div>
+</div>
+</div>
+</div>
+</script>

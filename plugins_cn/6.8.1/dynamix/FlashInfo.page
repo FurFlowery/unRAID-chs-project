@@ -1,0 +1,72 @@
+Menu="Flash"
+Title="闪存设备设置"
+Tag="usb"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function cleanUp(zip) {
+  if (document.hasFocus()) {
+    $('input[value="Creating Flash backup..."]').val('Flash backup').prop('disabled',false);
+    $('div.spinner').hide('slow');
+    $('#pleaseWait').hide('slow');
+    $.post('/webGui/include/Download.php',{cmd:'unlink',file:zip});
+  } else {
+    setTimeout(function(){cleanUp(zip);},2000);
+  }
+}
+function backup() {
+  $('input[value="Flash backup"]').val('Creating Flash backup...').prop('disabled',true);
+  $('div.spinner').show('slow');
+  $('#pleaseWait').show('slow');
+  $.post('/webGui/include/Download.php',{cmd:'backup'},function(zip) {
+    if (zip) {
+      location = '/'+zip;
+      setTimeout(function(){cleanUp(zip);},6000);
+    } else {
+      $('input[value="Creating Flash backup..."]').val('Flash backup');
+      $('div.spinner').hide('slow');
+      $('#pleaseWait').hide('slow');
+      swal('Creation error','Insufficient free disk space available','error');
+    }
+  });
+}
+</script>
+<div class="spinner" style="display:none"></div>
+<div id="pleaseWait" style="display:none;text-align:center;margin-bottom:24px"><span class="red-text strong">请稍候...正在创建 Flash 备份 zip 文件 (这可能需要几分钟)</span></div>
+
+Flash 供应商:
+: <?=$var['flashVendor'];?>
+
+Flash 产品:
+: <?=$var['flashProduct'];?>&nbsp;
+
+Flash GUID:
+: <?=$var['flashGUID'];?>&nbsp;
+
+<?if (strstr($var['regTy'], "blacklisted")):?>
+
+&nbsp;
+: **Blacklisted** - <a href="http://lime-technology.com/contact" target="_blank">联系支持</a>
+
+<?else:?>
+
+&nbsp;
+: [注册 Key 管理](/Tools/Registration)
+
+<?endif;?>
+
+> 使用 *Flash backup* 创建 Flash 设备当前内容备份的一个 zip 文件, 并将其本地存储在计算机上.
+
+&nbsp;
+: <input type="button" value="Flash backup" onclick="backup()"><input type="button" value="完成" onclick="done()">

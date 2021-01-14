@@ -1,0 +1,67 @@
+Type="xmenu"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+function clone_list($disk) {
+  return strpos($disk['status'],'_NP')===false && ($disk['type']=='Data' || $disk['name']=='cache');
+}
+if ($name) {
+  $refs = []; $n = 0;
+  // Natural sorting of share names
+  uksort($shares,'strnatcasecmp');
+  foreach ($shares as $ref) {
+    $sname = $ref['name'];
+    $refs[] = $sname;
+    if ($sname==$name) $i = $n;
+    $n++;
+  }
+  $end  = count($refs)-1;
+  $prev = urlencode($i>0 ? $refs[$i-1] : $refs[$end]);
+  $next = urlencode($i<$end ? $refs[$i+1] : $refs[0]);
+} else {
+  $tabbed = false;
+}
+?>
+<style>
+div.clone1{position:absolute;right:0;margin-top:0}
+div.clone2{position:absolute;right:0;margin-top:48px}
+select.clone{min-width:132px;margin-right:0}
+input.clone{margin-left:8px;margin-right:0}
+span.clone,i.clone{margin-right:4px}
+</style>
+<script>
+function toggleButton(button,id) {
+  var disabled = true;
+  switch (id) {
+  case false:
+  case true:
+    disabled = id;
+    break;
+  default:
+    $('select#'+id+' option').each(function(){if ($(this).prop('selected')==true) disabled = false;});
+  }
+  $('input#'+button).prop('disabled',disabled);
+}
+<?if ($name):?>
+var ctrl = "<span class='ctrl1 status <?=$tabbed?'vhshift':'vshift'?>'><a href='/Shares/Share?name=<?=$prev?>' title='以前的用户共享'><button type='button' style='margin-right:4px'><i class='fa fa-chevron-left fa-fw'></i></button></a><a href='/Shares/Share?name=<?=$next?>' title='下一个用户共享'><button type='button'><i class='fa fa-chevron-right fa-fw'></i></button></a></span>";
+
+$(function() {
+<?if ($tabbed):?>
+  $('.tabs').append(ctrl);
+<?else:?>
+  $('div[id=title]:first').append(ctrl);
+<?endif;?>
+});
+<?endif;?>
+</script>

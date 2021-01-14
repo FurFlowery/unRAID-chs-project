@@ -1,0 +1,60 @@
+Menu="Shares:2"
+Title="磁盘共享"
+Tag="user-circle-o"
+Cond="$var['fsState']!='Stopped' && $var['shareDisk']!='no'"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function displayDisks(all) {
+  if (all == 'yes') {
+    $.cookie('ssz','ssz',{path:'/'});
+    $('#disk_list').html("<tr><td colspan='8'><div class='spinner'></div></td></tr>");
+    $('div.spinner').html(unraid_logo);
+  }
+  $.get('/webGui/include/DiskList.php',{compute:all,path:'<?=$path?>',scale:'<?=$display['scale']?>',number:'<?=$display['number']?>',fill:$.cookie('ssz')},function(data){
+    $.removeCookie('ssz',{path:'/'})
+    $('#disk_list').html(data);
+    $('#compute-disks').prop('disabled',!data || data.indexOf('colspan=')!=-1);
+  });
+}
+$(function() {
+  displayDisks('no');
+});
+</script>
+
+<table class="share_status share">
+<thead><tr><td style="width:15%">名称</td><td style="width:33%">描述</td><td>SMB</td><td>NFS</td><td>AFP</td><td style="width:8%">类型</td><td style="width:8%">大小</td><td style="width:8%">剩余</td><td style="width:4%">查看</td></tr></thead>
+<tbody id="disk_list"></tbody>
+</table>
+<p><input id="compute-disks" type="button" value="全部计算" onclick="$(this).prop('disabled',true);displayDisks('yes')"></p>
+
+> **彩色状态指示器** - *磁盘共享* 中每行开头的颜色指示器的含义如下:
+>
+> <i class='fa fa-circle orb green-orb'></i>已挂载, 基础设备具有冗余/保护.
+>
+> <i class='fa fa-warning orb yellow-orb'></i>已挂载, 基础设备没有冗余/保护.
+>
+> **安全模式:**
+
+> + '-' -- 磁盘共享未导出并且在网络上不可用
+> + *公开* -- 包括来宾在内的所有用户都具有完全的 读/写 访问权限 (开放式访问权)
+> + *安全* -- 包括来宾在内的所有用户均具有 读取权限, 为每个用户设置了 写入权限 (受限的访问权)
+> + *私有* -- 没有访客访问权限, 每个用户都设置 读/写 或 只读访问权限 (关闭访问权)
+>
+> **特殊模式:**
+
+> + SMB 安全模式显示 *斜体* indicates exported hidden user shares.
+> + AFP 安全模式显示 *斜体* indicates exported time-machine user shares.
+> + NFS 没有用于用户共享的特殊模式.
+

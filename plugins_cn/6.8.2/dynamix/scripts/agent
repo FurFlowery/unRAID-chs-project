@@ -1,0 +1,21 @@
+#!/bin/bash
+
+run="/boot/config/plugins/dynamix/notifications/agents"
+idle="/boot/config/plugins/dynamix/notifications/agents-disabled"
+
+case $1 in
+enable)
+  [[ ! -d $run ]] && mkdir -p $run
+  [[ -f $idle/$2 ]] && mv -f $idle/$2 $run/$2
+;;
+disable)
+  [[ ! -d $idle ]] && mkdir -p $idle
+  [[ -f $run/$2 ]] && mv -f $run/$2 $idle/$2
+;;
+delete)
+  [[ -f $run/$2 ]] && rm -f $run/$2
+;;
+test)
+  [[ -f $run/$2 ]] && /bin/bash $run/$2
+;;
+esac

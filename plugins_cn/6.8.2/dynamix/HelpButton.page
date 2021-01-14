@@ -1,0 +1,28 @@
+Menu="Buttons"
+Title="帮助"
+Icon="icon-u-help"
+Code="e934"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<script>
+function HelpButton() {
+  if ($('#nav-item.HelpButton').toggleClass('active').hasClass('active')) {
+    $('.inline_help').show('slow');
+    $.cookie('help','help',{path:'/'});
+  } else {
+    $('.inline_help').hide('slow');
+    $.removeCookie('help',{path:'/'});
+  }
+}
+</script>

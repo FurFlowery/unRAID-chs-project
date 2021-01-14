@@ -1,0 +1,202 @@
+Menu="VMs:1"
+Title="虚拟机"
+Tag="columns"
+Cond="is_file('/var/run/libvirt/libvirtd.pid')"
+Markdown="false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2015-2018, Derek Macias, Eric Schultz, Jon Panozzo.
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+require_once "$docroot/plugins/dynamix.vm.manager/include/libvirt_helpers.php";
+$cpus = cpu_list();
+
+function showCPUs($uuid) {
+  global $cpus;
+  $vm = domain_to_config($uuid);
+  $vcpu = $vm['domain']['vcpu'];
+  echo "<div class='four'>";
+  foreach ($cpus as $pair) {
+    unset($cpu1,$cpu2);
+    list($cpu1, $cpu2) = preg_split('/[,-]/',$pair);
+    $check = in_array($cpu1, $vcpu) ? 'fa-circle orange-text':'fa-circle-o';
+    if (!$cpu2) {
+      echo "<label><i class='fa fa-fw $check'></i>&nbsp;&nbsp;cpu $cpu1</label>";
+    } else {
+      echo "<label class='cpu1'><i class='fa fa-fw $check'></i>&nbsp;&nbsp;cpu $cpu1 / $cpu2</label>";
+      $check = in_array($cpu2, $vcpu) ? 'fa-circle orange-text':'fa-circle-o';
+      echo "<label class='cpu2'><i class='fa fa-fw $check'></i></label>";
+    }
+  }
+  echo "</div>";
+}
+$uuid = $_GET['uuid'];
+$subaction = $_GET['subaction'] ?? '';
+if ($_GET['refresh']) {
+  $vm = $_GET['name'];
+  if ($lv->domain_is_active($vm)) {
+    echo "<meta http-equiv='refresh' content='5; url=/VMs?name=$vm&amp;refresh=true'>";
+    $msg = "正在等待 $vm 关机...";
+  } else {
+    echo "<script>clearHistory();</script>";
+    $msg = "$vm 已经关机";
+  }
+}
+if ($subaction) {
+  $vm = $lv->domain_get_name_by_uuid($uuid);
+  if ($subaction == 'disk-resize') {
+    $capacity = str_replace(["KB","MB","GB","TB","PB"," ",","], ["K","M","G","T","P","",""], strtoupper($_GET['cap']));
+    $oldcap = str_replace(["KB","MB","GB","TB","PB"," ",","], ["K","M","G","T","P","",""], strtoupper($_GET['oldcap']));
+    if (substr($oldcap,0,-1) < substr($capacity,0,-1)){
+      shell_exec("qemu-img resize -q ".escapeshellarg($_GET['disk'])." ".escapeshellarg($capacity));
+      $msg = $vm." 磁盘容量已更改为 $capacity";
+    } else {
+      $msg = "错误: 磁盘容量必须大于 {$_GET['oldcap']}";
+    }
+  } elseif ($subaction == 'disk-remove') {
+    $msg = $lv->domain_disk_remove($vm, $_GET['dev'])
+    ? "$vm 磁盘已被删除"
+    : "错误: ".$lv->get_last_error();
+  } elseif ($subaction == 'snap-create') {
+    $msg = $lv->domain_snapshot_create($vm)
+    ? "已创建 $vm 的快照"
+    : "错误: ".$lv->get_last_error();
+  } elseif ($subaction == 'snap-delete') {
+    $msg = $lv->domain_snapshot_delete($vm, $_GET['snap'])
+    ? "已删除 $vm 的快照"
+    : "错误: ".$lv->get_last_error();
+  } elseif ($subaction == 'snap-revert') {
+    $msg = $lv->domain_snapshot_revert($vm, $_GET['snap'])
+    ? "$vm 已还原"
+    : "错误: ".$lv->get_last_error();
+  } elseif ($subaction == 'snap-desc') {
+    $msg = $lv->snapshot_set_metadata($vm, $_GET['snap'], $_POST['snapdesc'])
+    ? "$vm 的快照说明已保存"
+    : "错误: ".$lv->get_last_error();
+  }
+  echo "<script>clearHistory();</script>";
+}
+if ($libvirt_running=='yes') $vms = $lv->get_domains();
+if (empty($vms)) {
+  $msg = $libvirt_running=='yes'
+  ? '无虚拟机. 请从模板创建或添加 XML.'
+  : 'Libvirt 没有运行. 转到设置选项卡, 然后单击启动.';
+}
+?>
+<link type="text/css" rel="stylesheet" href="<?autov('/plugins/dynamix.vm.manager/styles/dynamix.vm.manager.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.ui.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.filetree.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<style type="text/css">
+.fileTree{width:300px;max-height:150px;overflow-y:scroll;position:absolute;z-index:100;display:none}
+div.four{font-size:1.1rem;width:300px}
+div.four label{float:left;display:table-cell;width:25%}
+div.four label:nth-child(4n+4){float:none;clear:both}
+div.four label.cpu1{width:32%}
+div.four label.cpu2{width:26%}
+th.vmname{width:350px}
+th.eight{width:8%}
+table.domdisk tbody tr:nth-child(even){background-color:transparent}
+table tbody td{line-height:normal}
+</style>
+<table id="kvm_table" class="tablesorter four shift">
+<thead><tr><th class="vmname"><a href="#" style="cursor:hand;margin-left:12px;display:inline-block;width:32px" onclick="resetSorting()" title="重置排序"><i class="fa fa-th-list"></i></a>名称</th><th>描述</th><th>CPUs</th><th>内存</th><th>虚拟磁盘</th><th>图形处理器</th><th class="eight">自动启动</th></tr></thead>
+<tbody id="kvm_list"><tr><td colspan='8'><div class="spinner"></div></td></tr></tbody>
+</table>
+<input type="button" onclick="addVM()" id="btnAddVM" value="添加虚拟机" style="display:none">
+<input type="button" onclick="startAll()" value="全部启动" style="display:none">
+<input type="button" onclick="stopAll()" value="全部停止" style="display:none">
+
+<script src="<?autov('/webGui/javascript/jquery.filetree.js')?>"></script>
+<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.vm.manager/javascript/dynamix.vm.manager.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.vm.manager/javascript/vmmanager.js')?>"></script>
+<script>
+<?if ($display['resize']):?>
+function resize(bind) {
+  var width = [];
+  var h = $('#kvm_list').height();
+  var s = Math.max(window.innerHeight-340,330);
+  if (h>s || bind) {
+    $('#kvm_list').height(s);
+    $('#kvm_table tbody tr:first-child td').each(function(){width.push($(this).width());});
+    $('#kvm_table thead tr th').each(function(i){$(this).width(width[i]);});
+    if (!bind) $('#kvm_table thead,#kvm_table tbody').addClass('fixed');
+  }
+}
+<?endif;?>
+function resetSorting() {
+  $('input[type=button]').prop('disabled',true);
+  $.post('/plugins/dynamix.vm.manager/include/UserPrefs.php',{reset:true},function(){loadlist();});
+}
+var sortableHelper = function(e,i){
+  i.children().each(function(){
+    $(this).width($(this).width());
+  });
+  return i;
+};
+function loadlist() {
+  $.get('/plugins/dynamix.vm.manager/include/VMMachines.php',{show:$.cookie('vmshow')},function(d) {
+    var data = d.split(/\0/);
+    $('#kvm_list').html(data[0]).sortable({helper:sortableHelper,items:'tr.sortable',cursor:'move',axis:'y',containment:'parent',delay:100,opacity:0.5,zIndex:9999,
+    update:function(e,ui){
+      $('#kvm_list').find('tr.sortable').each(function(){
+        var parent = $(this).attr('parent-id');
+        var child = $('tr[child-id="'+parent+'"]');
+        child.detach().insertAfter($(this));
+      });
+      var row = $('#kvm_list').find('tr:first');
+      var names = ''; var index = '';
+      row.parent().children().find('td.vm-name').each(function(){names+=$(this).find('a').text()+';';index+=$(this).parent().parent().children().index($(this).parent())+';';});
+      $.post('/plugins/dynamix.vm.manager/include/UserPrefs.php',{names:names,index:index});
+    }});
+    $('head').append('<script>'+data[1]+'<\/script>');
+<?if ($display['resize']):?>
+    resize();
+    $(window).bind('resize',function(){resize(true);});
+<?endif;?>
+<?foreach ($vms as $vm) {
+  $res = $lv->get_domain_by_name($vm);
+  $uuid = $lv->domain_get_uuid($res);
+?>  $('.vcpu-<?=$uuid?>').tooltipster({
+      trigger:'custom',
+      triggerOpen:{mouseenter:true,click:true,touchstart:true},
+      contentAsHTML:true,
+      animation:'grow',
+      triggerClose:{click:true,scroll:true,mouseleave:true,delay:1},
+      interactive:true,
+      viewportAware:true,
+      functionBefore:function(instance,helper){instance.content("<?=showCPUs($uuid)?>");}
+    });
+<?}?>
+    $('.autostart').switchButton({labels_placement:"right"});
+    $('.autostart').change(function() {
+      $.post('/plugins/dynamix.vm.manager/include/VMajax.php',{action:'domain-autostart',uuid:$(this).attr('uuid'),autostart:$(this).prop('checked'),response:'json'},function(data){
+        $(this).prop('checked', data.autostart);
+      },'json');
+    });
+    context.init({preventDoubleContext:false,left:true,above:false});
+    $('input[type=button]').prop('disabled',false).show('slow');
+    $('.text').click(showInput);
+    $('.input').blur(hideInput);
+  });
+}
+$(function() {
+<?if ($msg):?>
+  <?$color = strpos($msg, "rror:")!==false ? 'red-text':'green-text'?>
+  $('#countdown').html("<span class='<?-$color?>'><?=$msg?></span>");
+<?endif;?>
+  $('#btnAddVM').click(function AddVMEvent(){$('.tab>input#tab2').click();});
+  loadlist();
+});
+</script>

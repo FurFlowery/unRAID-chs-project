@@ -1,0 +1,88 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY title      "unRAID 简体中文汉化包">
+<!ENTITY name      "urchs.682">
+<!ENTITY author    "YunLan">
+<!ENTITY version   "v2.0">
+<!ENTITY github    "https://github.com/yunlancn/unRAID-chs-project">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/&name;.plg">
+]>
+
+<PLUGIN name="&title;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.8.2" max="6.8.2" support="" icon="users">
+
+<CHANGES>
+
+###v2.0
+- 1、新增"插件商店"(Community Applications)插件翻译  
+- 2、新增"系统温度"(Dynamix System Temperature)插件翻译  
+- 3、新增"未分配设备"(Unassigned Devices)插件翻译  
+- 4、新增"自动更新"(CA Auto Update Applications)插件翻译  
+- 5、新增"系统状态"(Dynamix System Statistics)插件翻译   
+- 6、修复翻译细节 
+
+###v1.0
+- 修复错误
+
+###v0.8
+- 替换更合适的翻译词汇
+- 增加翻译内容
+- 修正错误
+
+###2020.03.31
+- 替换更合适的翻译词汇
+- 增加翻译内容
+
+###2020.03.30
+- 替换更合适的翻译词汇
+- 增加翻译内容
+
+###2020.03.29
+- 修复BUG
+- 增加翻译内容
+
+###2020.03.28
+- Initial Release
+</CHANGES>
+
+
+<!--
+The 'source' file.
+-->
+<FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+<URL>https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/&name;-&version;-x86_64-1.txz</URL>
+</FILE>
+
+<!--
+The 'post-install' script
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+echo ""
+echo "----------------------------------------------------"
+echo " unRaid Chinese Pakage"
+echo " &name; 安装完成."
+echo " 版本: &version;"
+echo " 注意: 卸载该插件回到原版的话 要重启才会生效 "
+echo " Copyright 2019-2020, YunLan"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!--
+The 'remove' script.
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+rm -rf /boot/config/plugins/&name;
+echo ""
+echo "----------------------------------------------------"
+echo " unRaid Chinese Pakage"
+echo " &name; 卸载完成."
+echo " 注意: 需要重启才会生效 "
+echo " Copyright 2019-2020, YunLan"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE> 
+</PLUGIN>

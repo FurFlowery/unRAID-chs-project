@@ -1,0 +1,25 @@
+Menu="Tasks:70"
+Type="xmenu"
+Code="e918"
+Cond="exec(\"grep -o '^SERVICE=.enable' /boot/config/domain.cfg 2>/dev/null\")"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2015-2018, Derek Macias, Eric Schultz, Jon Panozzo.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+if ($var['fsState'] != "Started") {
+  echo "<div class='notice shift'>阵列必须为 <span class='strong big'>已启动</span> 才能查看虚拟机.</div>";
+} elseif (!is_file('/var/run/libvirt/libvirtd.pid') || (!is_dir('/proc/'.@file_get_contents('/var/run/libvirt/libvirtd.pid')))) {
+  echo "<div class='notice shift'>Libvirt 服务无法启动.</div>";
+}
+if (count($pages)==2) $tabbed = false;
+?>

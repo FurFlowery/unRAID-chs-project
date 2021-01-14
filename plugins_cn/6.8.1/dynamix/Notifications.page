@@ -1,0 +1,270 @@
+Menu="UserPreferences"
+Type="xmenu"
+Title="通知设置"
+Icon="icon-notifications"
+Tag="phone-square"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ * Copyright 2012, Andrew Hamer-Adams, http://www.pixeleyes.co.nz.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$events = explode('|', $notify['events']);
+$disabled = $notify['system'] ? '' : 'disabled';
+?>
+<script>
+function prepareNotify(form) {
+  form.entity.value = form.normal1.checked | form.warning1.checked | form.alert1.checked;
+  form.normal.value = form.normal1.checked*1 + form.normal2.checked*2 + form.normal3.checked*4;
+  form.warning.value = form.warning1.checked*1 + form.warning2.checked*2 + form.warning3.checked*4;
+  form.alert.value = form.alert1.checked*1 + form.alert2.checked*2 + form.alert3.checked*4;
+  form.unraid.value = form.unraid1.checked*1 + form.unraid2.checked*2 + form.unraid3.checked*4;
+  form.plugin.value = form.plugin1.checked*1 + form.plugin2.checked*2 + form.plugin3.checked*4;
+  form.docker_notify.value = form.docker_notify1.checked*1 + form.docker_notify2.checked*2 + form.docker_notify3.checked*4;
+  form.report.value = form.report1.checked*1 + form.report2.checked*2 + form.report3.checked*4;
+  form.normal1.disabled = true;
+  form.normal2.disabled = true;
+  form.normal3.disabled = true;
+  form.warning1.disabled = true;
+  form.warning2.disabled = true;
+  form.warning3.disabled = true;
+  form.alert1.disabled = true;
+  form.alert2.disabled = true;
+  form.alert3.disabled = true;
+  form.unraid1.disabled = true;
+  form.unraid2.disabled = true;
+  form.unraid3.disabled = true;
+  form.plugin1.disabled = true;
+  form.plugin2.disabled = true;
+  form.plugin3.disabled = true;
+  form.docker_notify1.disabled = true;
+  form.docker_notify2.disabled = true;
+  form.docker_notify3.disabled = true;
+  form.report1.disabled = true;
+  form.report2.disabled = true;
+  form.report3.disabled = true;
+}
+function prepareSystem(index) {
+  if (index==0) $('.checkbox').attr('disabled','disabled'); else $('.checkbox').removeAttr('disabled');
+}
+function prepareTitle() {
+  var title = 'Available notifications:';
+  $('#unraidTitle,#pluginTitle,#dockerTitle,#reportTitle').html('&nbsp;');
+  if ($('.unraid').is(':visible')) { $('#unraidTitle').html(title); return; }
+  if ($('.plugin').is(':visible')) { $('#pluginTitle').html(title); return; }
+  if ($('.docker').is(':visible')) { $('#dockerTitle').html(title); return; }
+  if ($('.report').is(':visible')) { $('#reportTitle').html(title); return; }
+}
+function prepareUnraid(value) {
+  if (value=='') $('.unraid').hide(); else $('.unraid').show();
+  prepareTitle();
+}
+function preparePlugin(value) {
+  if (value=='') $('.plugin').hide(); else $('.plugin').show();
+  prepareTitle();
+}
+function prepareDocker(value) {
+  if (value=='') $('.docker').hide(); else $('.docker').show();
+  prepareTitle();
+}
+function prepareReport(value) {
+  if (value=='') $('.report').hide(); else $('.report').show();
+  prepareTitle();
+}
+$(function(){
+  prepareUnraid(document.notify_settings.unraidos.value);
+  preparePlugin(document.notify_settings.version.value);
+  prepareDocker(document.notify_settings.docker_update.value);
+  prepareReport(document.notify_settings.status.value);
+});
+</script>
+<form markdown="1" name="notify_settings" method="POST" action="/update.php" target="progressFrame" onsubmit="prepareNotify(this)">
+<input type="hidden" name="#file" value="dynamix/dynamix.cfg">
+<input type="hidden" name="#section" value="notify">
+<input type="hidden" name="#command" value="/webGui/scripts/notify">
+<input type="hidden" name="#arg[1]" value="cron-init">
+<input type="hidden" name="entity">
+<input type="hidden" name="normal">
+<input type="hidden" name="warning">
+<input type="hidden" name="alert">
+<input type="hidden" name="unraid">
+<input type="hidden" name="plugin">
+<input type="hidden" name="docker_notify">
+<input type="hidden" name="report">
+通知显示:
+: <select name="display" size="1">
+  <?=mk_option($notify['display'], "0", "详细")?>
+  <?=mk_option($notify['display'], "1", "摘要")?>
+  </select>
+
+> 选择 *详细* 视图, 通知一到达就完整显示在屏幕上.<br>
+> 通知可以单独或一次性确认.
+>
+> 选择 *摘要* 视图, 仅统计通知数, 未读通知数.<br>
+> 单击计数器以确认或查看未读通知.
+
+日期格式:
+: <select name="date" size="1">
+  <?=mk_option($notify['date'], "d-m-Y", "DD-MM-YYYY")?>
+  <?=mk_option($notify['date'], "m-d-Y", "MM-DD-YYYY")?>
+  <?=mk_option($notify['date'], "Y-m-d", "YYYY-MM-DD")?>
+  </select>
+
+> 选择通知存档中使用的所需日期格式. 建议使用 YYYY-MM-DD, 这样可以合理地对日期/时间列进行排序.
+
+时间格式:
+: <select name="time" size="1">
+  <?=mk_option($notify['time'], "h:i A", "12 小时")?>
+  <?=mk_option($notify['time'], "H:i", "24 小时")?>
+  </select>
+
+> 选择通知存档中使用的所需时间格式. 建议使用 24 小时, 这样可以合理地对日期/时间列进行排序.
+
+显示位置:
+: <select name="position" size="1">
+  <?=mk_option($notify['position'], "top-left", "顶部左侧")?>
+  <?=mk_option($notify['position'], "top-right", "顶部右侧")?>
+  <?=mk_option($notify['position'], "bottom-left", "底部左侧")?>
+  <?=mk_option($notify['position'], "bottom-right", "顶部右侧")?>
+  <?=mk_option($notify['position'], "center", "中心")?>
+  </select>
+
+> 选择通知在屏幕上显示的位置. 根据所选的位置, 将堆叠多个通知.
+
+将通知存储到闪存驱动器:
+: <select name="path" size="1">
+  <?=mk_option($notify['path'], "/tmp/notifications", "No")?>
+  <?=mk_option($notify['path'], "/boot/config/plugins/dynamix/notifications", "Yes")?>
+  </select>
+
+> 默认情况下, 通知存储在 RAM 上, 在系统重新启动时会丢失.
+> 通知可能会永久存储在闪存驱动器的 '/boot/config/plugins/dynamix' 文件夹下.
+
+系统通知:
+: <select name="system" size="1" onchange="prepareSystem(this.selectedIndex)">
+  <?=mk_option($notify['system'], "", "禁用")?>
+  <?=mk_option($notify['system'], "*/1 * * * *", "启用")?>
+  </select>
+
+> 默认情况下, 通知系统被禁用. 在此处启用它以开始接收通知.
+> 以下各小节提供了有关将发送哪些通知和通知类型的更多选项.
+
+Unraid OS 更新通知:
+: <select name="unraidos" size="1" onchange="prepareUnraid(this.value)">
+  <?=mk_option($notify['unraidos'], "", "从不检查")?>
+  <?=mk_option($notify['unraidos'], "11 */6 * * *", "一天检查四次")?>
+  <?=mk_option($notify['unraidos'], "11 0,12 * * *", "一天检查两次")?>
+  <?=mk_option($notify['unraidos'], "11 0 * * *", "一天检查一次")?>
+  <?=mk_option($notify['unraidos'], "11 0 * * 1", "一周检查一次")?>
+  <?=mk_option($notify['unraidos'], "11 0 1 * *", "一个月检查一次")?>
+  </select>
+
+> Start a periodic verification and notify the user when a new version of the Unraid OS system is detected.
+> Use the checkboxes below to select how notifications need to be given; by browser, by email and/or by custom agent.
+
+插件更新通知:
+: <select name="version" size="1" onchange="preparePlugin(this.value)">
+  <?=mk_option($notify['version'], "", "从不检查")?>
+  <?=mk_option($notify['version'], "10 */6 * * *", "一天检查四次")?>
+  <?=mk_option($notify['version'], "10 0,12 * * *", "一天检查两次")?>
+  <?=mk_option($notify['version'], "10 0 * * *", "一天检查一次")?>
+  <?=mk_option($notify['version'], "10 0 * * 1", "一周检查一次")?>
+  <?=mk_option($notify['version'], "10 0 1 * *", "一个月检查一次")?>
+  </select>
+
+> 启动定期检查, 并在检测到一个或多个已安装插件的新版本时通知用户.
+> 使用下面的复选框选择需要如何发送通知; 通过浏览器, 电子邮件和/或通过自定义代理.
+
+Docker 更新通知:
+: <select name="docker_update" size="1" onchange="prepareDocker(this.value)">
+  <?=mk_option($notify['docker_update'], "", "从不检查")?>
+  <?=mk_option($notify['docker_update'], "10 */6 * * *", "一天检查四次")?>
+  <?=mk_option($notify['docker_update'], "10 0,12 * * *", "一天检查两次")?>
+  <?=mk_option($notify['docker_update'], "10 0 * * *", "一天检查一次")?>
+  <?=mk_option($notify['docker_update'], "10 0 * * 1", "一周检查一次")?>
+  <?=mk_option($notify['docker_update'], "10 0 1 * *", "一个月检查一次")?>
+  </select>
+
+> 启动定期检查, 并在检测到一个或多个已安装 Dicker 的新版本时通知用户.
+> 使用下面的复选框选择需要如何发送通知; 通过浏览器, 电子邮件和/或通过自定义代理.
+
+阵列状态通知:
+: <select name="status" size="1" onchange="prepareReport(this.value)">
+  <?=mk_option($notify['status'], "", "从不发送")?>
+  <?=mk_option($notify['status'], "20 * * * *", "每小时发送一次")?>
+  <?=mk_option($notify['status'], "20 */2 * * *", "每两小时发送一次")?>
+  <?=mk_option($notify['status'], "20 */6 * * *", "一天发送四次")?>
+  <?=mk_option($notify['status'], "20 */8 * * *", "一天发送三次")?>
+  <?=mk_option($notify['status'], "20 0,12 * * *", "一天发送两次")?>
+  <?=mk_option($notify['status'], "20 0 * * *", "一天发送一次")?>
+  <?=mk_option($notify['status'], "20 0 * * 1", "一周发送一次")?>
+  <?=mk_option($notify['status'], "20 0 1 * *", "一个月发送一次")?>
+  </select>
+
+> 启动定期阵列运行状况检查 (预防性维护), 并将检查结果通知用户.
+
+<span id="unraidTitle" class="unraid" style="display:none">&nbsp;</span>
+: <span class="unraid" style="display:none"><span style="display:inline-block;width:130px;font-style:italic">Unraid OS 更新</span>
+  <input type="checkbox" name="unraid1"<?=($notify['unraid'] & 1)==1 ? ' checked' : ''?>>浏览器 &nbsp;
+  <input type="checkbox" name="unraid2"<?=($notify['unraid'] & 2)==2 ? ' checked' : ''?>>Email &nbsp;
+  <input type="checkbox" name="unraid3"<?=($notify['unraid'] & 4)==4 ? ' checked' : ''?>>代理 &nbsp;</span>
+
+<span id="pluginTitle" class="plugin" style="display:none">&nbsp;</span>
+: <span class="plugin" style="display:none"><span style="display:inline-block;width:130px;font-style:italic">插件更新</span>
+  <input type="checkbox" name="plugin1"<?=($notify['plugin'] & 1)==1 ? ' checked' : ''?>>浏览器 &nbsp;
+  <input type="checkbox" name="plugin2"<?=($notify['plugin'] & 2)==2 ? ' checked' : ''?>>Email &nbsp;
+  <input type="checkbox" name="plugin3"<?=($notify['plugin'] & 4)==4 ? ' checked' : ''?>>代理 &nbsp;</span>
+
+<span id="dockerTitle" class="docker" style="display:none">&nbsp;</span>
+: <span class="docker" style="display:none"><span style="display:inline-block;width:130px;font-style:italic">Docker 更新</span>
+  <input type="checkbox" name="docker_notify1"<?=($notify['docker_notify'] & 1)==1 ? ' checked' : ''?>>浏览器 &nbsp;
+  <input type="checkbox" name="docker_notify2"<?=($notify['docker_notify'] & 2)==2 ? ' checked' : ''?>>Email &nbsp;
+  <input type="checkbox" name="docker_notify3"<?=($notify['docker_notify'] & 4)==4 ? ' checked' : ''?>>代理 &nbsp;</span>
+
+<span id="reportTitle" class="report" style="display:none">&nbsp;</span>
+: <span class="report" style="display:none"><span style="display:inline-block;width:130px;font-style:italic">阵列状态</span>
+  <input type="checkbox" name="report1"<?=($notify['report'] & 1)==1 ? ' checked' : ''?>>浏览器 &nbsp;
+  <input type="checkbox" name="report2"<?=($notify['report'] & 2)==2 ? ' checked' : ''?>>Email &nbsp;
+  <input type="checkbox" name="report3"<?=($notify['report'] & 4)==4 ? ' checked' : ''?>>代理 &nbsp;</span>
+
+> 使用上面的复选框来选择需要通过浏览器, 电子邮件和/或服务发送通知的内容和方式.<br>
+> <b>提示:</b> 您可以使用自定义通知代理; 只需将它们添加到 "/boot/config/plugins/dynamix/notification/agents" 目录中并选中 '代理'.
+
+通知方式:
+: <span style="display:inline-block;width:130px;font-style:italic">通知</span>
+  <input type="checkbox" class="checkbox" name="normal1"<?=($notify['normal'] & 1)==1 ? " checked $disabled" : $disabled?>>浏览器 &nbsp;
+  <input type="checkbox" class="checkbox" name="normal2"<?=($notify['normal'] & 2)==2 ? " checked $disabled" : $disabled?>>Email &nbsp;
+  <input type="checkbox" class="checkbox" name="normal3"<?=($notify['normal'] & 4)==4 ? " checked $disabled" : $disabled?>>代理 &nbsp;
+
+&nbsp;
+: <span style="display:inline-block;width:130px;font-style:italic">警告</span>
+  <input type="checkbox" class="checkbox" name="warning1"<?=($notify['warning'] & 1)==1 ? " checked $disabled" : $disabled?>>浏览器 &nbsp;
+  <input type="checkbox" class="checkbox" name="warning2"<?=($notify['warning'] & 2)==2 ? " checked $disabled" : $disabled?>>Email &nbsp;
+  <input type="checkbox" class="checkbox" name="warning3"<?=($notify['warning'] & 4)==4 ? " checked $disabled" : $disabled?>>代理 &nbsp;
+
+&nbsp;
+: <span style="display:inline-block;width:130px;font-style:italic">注意</span>
+  <input type="checkbox" class="checkbox" name="alert1"<?=($notify['alert'] & 1)==1 ? " checked $disabled" : $disabled?>>浏览器 &nbsp;
+  <input type="checkbox" class="checkbox" name="alert2"<?=($notify['alert'] & 2)==2 ? " checked $disabled" : $disabled?>>Email &nbsp;
+  <input type="checkbox" class="checkbox" name="alert3"<?=($notify['alert'] & 4)==4 ? " checked $disabled" : $disabled?>>代理 &nbsp;
+
+> 通知方式:
+>
+> *通知* - 这是消息性质的通知, 并不表示存在问题, 例如有新版本可用<br>
+> *警告* - 这是提醒性质的通知, 可能预示着未来的问题, 例如硬盘比平时更热<br>
+> *注意* - 这是严重性质的通知, 需要立即处理, 例如硬盘出现故障<br>
+>
+> 为每个分类选择要通知的方式.
+
+<input type="submit" name="#default" value="Default">
+: <input type="submit" name="#apply" value="Apply" disabled><input type="button" value="完成" onclick="done()"></td>
+</form>

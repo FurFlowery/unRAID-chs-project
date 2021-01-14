@@ -1,0 +1,24 @@
+Menu="Tasks:60"
+Type="xmenu"
+Code="e90b"
+Cond="exec(\"grep -o '^DOCKER_ENABLED=.yes' /boot/config/docker.cfg 2>/dev/null\")"
+----
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2014-2018, Guilherme Jardim, Eric Schultz, Jon Panozzo.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+if ($var['fsState'] != 'Started') {
+  echo "<div class='notice shift'>阵列必须 <span class='strong big'>已启动</span> 才能查看 Docker 容器.</div>";
+} elseif (!is_file('/var/run/dockerd.pid') || (!is_dir('/proc/'.@file_get_contents('/var/run/dockerd.pid')))) {
+  echo "<div class='notice shift'>Docker 服务无法启动.</div>";
+}
+?>

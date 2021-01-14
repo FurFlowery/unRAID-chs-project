@@ -1,0 +1,7 @@
+Menu="Utilities"
+Type="xmenu"
+Title="自动更新应用"
+Icon="refresh"
+Tag="refresh"
+Tabs="true"
+

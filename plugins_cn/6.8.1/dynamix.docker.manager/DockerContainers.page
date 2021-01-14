@@ -1,0 +1,166 @@
+Menu="Docker:1"
+Title="Docker 容器"
+Tag="cubes"
+Cond="is_file('/var/run/dockerd.pid')"
+Markdown="false"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2014-2018, Guilherme Jardim, Eric Schultz, Jon Panozzo.
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = strstr('white,black',$display['theme']) ? -58: -44;
+$top = strstr('white,black',$display['theme']) ? 40 : 20;
+$busy = "<i class='fa fa-spin fa-circle-o-notch'></i> 请稍候... 正在启动容器";
+$cpus = cpu_list();
+?>
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.ui.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
+<style>
+.basic{display:block}
+.advanced{display:none;white-space:nowrap}
+.log{cursor:zoom-in}
+.exec{cursor:pointer}
+table#docker_containers{text-align:left}
+th.five{width:5%}
+th.nine{width:9%}
+th.load{width:140px}
+input.wait{width:24px;margin:0 4px;padding:0 5px;border:none;box-shadow:none;background-color:transparent}
+table tbody td{line-height:normal}
+</style>
+<div id="iframe-popup" style="display:none;-webkit-overflow-scrolling:touch;"></div>
+<span class="status" style="margin-top:<?=$width?>px"><span><input type="checkbox" class="advancedview"></span></span>
+<table id="docker_containers" class="tablesorter shift">
+<thead><tr><th><a href="#" style="cursor:hand;margin-left:12px;display:inline-block;width:32px" onclick="resetSorting()" title="重置排序"><i class="fa fa-th-list"></i></a>应用程序</th><th>版本</th><th>网络</th><th>端口映射 <small>(应用程序到主机)</small></th><th>卷映射 <small>(应用程序到主机)</small></th><th class="load advanced">CPU & RAM 负载</th><th class="nine">自动启动</th><th class="five">日志</th></tr></thead>
+<tbody id="docker_list"><tr><td class="advanced"></td><td colspan='7'><div class="spinner"></div></td><td class="advanced"></td></tr></tbody>
+</table>
+<input type="button" onclick="addContainer()" value="添加容器" style="display:none">
+<input type="button" onclick="startAll()" value="全部启动" style="display:none">
+<input type="button" onclick="stopAll()" value="全部停止" style="display:none">
+<input type="button" onclick="pauseAll()" value="全部暂停" style="display:none">
+<input type="button" onclick="resumeAll()" value="全部恢复" style="display:none">
+<input type="button" onclick="checkAll()" value="检查更新" id="checkAll" style="display:none">
+<input type="button" onclick="updateAll()" value="全部更新" id="updateAll" style="display:none">
+<input type="button" onclick="sizes()" value="容器大小" style="display:none">
+
+<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.docker.manager/javascript/docker.js')?>"></script>
+<script>
+<?if (!$tabbed):?>
+$('#title').append("<span id='busy' class='red-text strong' style='display:none;margin-left:40px'><?=$busy?></span>");
+<?else:?>
+$('.tabs').append("<span id='busy' class='red-text strong' style='display:none;position:relative;top:<?=$top?>px;left:40px;font-size:1.4rem;letter-spacing:2px'><?=$busy?></span>");
+<?endif;?>
+<?if ($display['resize']):?>
+function resize(bind) {
+  var width = [];
+  var h = $('#docker_list').height();
+  var s = Math.max(window.innerHeight-340,330);
+  if (h>s || bind) {
+    $('#docker_list').height(s);
+    $('#docker_containers tbody tr:first-child td').each(function(){width.push($(this).width());});
+    $('#docker_containers thead tr th').each(function(i){$(this).width(width[i]);});
+    if (!bind) $('#docker_containers thead,#docker_containers tbody').addClass('fixed');
+  }
+}
+<?endif;?>
+function resetSorting() {
+  $('input[type=button]').prop('disabled',true);
+  $.post('/plugins/dynamix.docker.manager/include/UserPrefs.php',{reset:true},function(){loadlist();});
+}
+function listview() {
+  var more = $.cookie('docker_listview_mode')=='advanced';
+  if (more) {
+    $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php',{action:'docker_load_start'});
+    $('.docker_readmore').readmore('destroy');
+  } else {
+    $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php',{action:'docker_load_stop'});
+    $('.docker_readmore').readmore({maxHeight:32,moreLink:"<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",lessLink:"<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"});
+  }
+  $('input.autostart').each(function(){
+    var wait = $('#'+$(this).prop('id').replace('auto','wait'));
+    var auto = $(this).prop('checked');
+    if (auto && more) wait.show(); else wait.hide();
+  });
+}
+var sortableHelper = function(e,i){
+  i.children().each(function(){
+    $(this).width($(this).width());
+  });
+  return i;
+};
+function loadlist() {
+  $.get('/plugins/dynamix.docker.manager/include/DockerContainers.php',function(d) {
+    var data = d.split(/\0/);
+    $('div.spinner').hide('slow').remove();
+    $('#docker_list').html(data[0]).sortable({helper:sortableHelper,items:'tr.sortable',cursor:'move',axis:'y',containment:'parent',cancel:'span.docker_readmore,input',delay:100,opacity:0.5,zIndex:9999,
+    update:function(e,ui){
+      var row = $('#docker_list').find('tr:first');
+      var names = ''; var index = '';
+      row.parent().children().find('td.ct-name').each(function(){names+=$(this).find('.appname').text()+';';index+=$(this).parent().parent().children().index($(this).parent())+';';});
+      $.post('/plugins/dynamix.docker.manager/include/UserPrefs.php',{names:names,index:index});
+    }});
+    $('head').append('<script>'+data[1]+'<\/script>');
+<?if ($display['resize']):?>
+    resize();
+    $(window).bind('resize',function(){resize(true);});
+<?endif;?>
+    $('.iconstatus').each(function(){
+      if ($(this).hasClass('stopped')) $('div.'+$(this).prop('id')).hide();
+    });
+    $('.autostart').switchButton({labels_placement:'right'});
+    $('.autostart').change(function(){
+      var more = $.cookie('docker_listview_mode')=='advanced';
+      var wait = $('#'+$(this).prop('id').replace('auto','wait'));
+      var auto = $(this).prop('checked');
+      if (auto && more) wait.show(); else wait.hide();
+      $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php',{action:'autostart',container:$(this).attr('container'),auto:auto,wait:wait.find('input.wait').val()});
+    });
+    $('input.wait').change(function(){
+      $.post('/plugins/dynamix.docker.manager/include/UpdateConfig.php',{action:'wait',container:$(this).attr('container'),wait:$(this).val()});
+    });
+    if ($.cookie('docker_listview_mode')=='advanced') {$('.advanced').show(); $('.basic').hide();}
+    context.init({preventDoubleContext:false,left:true,above:false});
+    $('input[type=button]').prop('disabled',false).show('slow');
+    var update = false;
+    for (var i=0,ct; ct=docker[i]; i++) if (ct.update=='false') {update = true; break;};
+    if (!update) $('input#updateAll').prop('disabled',true);
+    listview();
+    if (data[2]==1) {$('#busy').show(); setTimeout(loadlist,5000);} else if ($('#busy').is(':visible')) {$('#busy').hide(); setTimeout(loadlist,3000);}
+  });
+}
+function sizes() {
+  openBox('/plugins/dynamix.docker.manager/include/ContainerSize.php','Container Size',600,600);
+}
+var watchDocker = new NchanSubscriber('/sub/dockerload');
+watchDocker.on('message', function(data){
+  data = data.split('\n');
+  for (var i=0,row; row=data[i]; i++) {
+    var id = row.split(';');
+    var w1 = Math.round(Math.min(id[1].slice(0,-1)/<?=count($cpus)*count(preg_split('/[,-]/',$cpus[0]))?>,100)*100)/100+'%';
+    $('.cpu-'+id[0]).text(w1.replace('.','<?=$display['number'][0]?>'));
+    $('.mem-'+id[0]).text(id[2]);
+    $('#cpu-'+id[0]).css('width',w1);
+  }
+});
+$(function() {
+  $('.advancedview').switchButton({labels_placement:'left', on_label:'高级视图', off_label:'基本视图', checked:$.cookie('docker_listview_mode')=='advanced'});
+  $('.advancedview').change(function(){
+    $('.advanced').toggle('slow');
+    $('.basic').toggle('slow');
+    $.cookie('docker_listview_mode',$('.advancedview').is(':checked')?'advanced':'basic',{expires:3650});
+    listview();
+  });
+  loadlist();
+  watchDocker.start();
+});
+</script>

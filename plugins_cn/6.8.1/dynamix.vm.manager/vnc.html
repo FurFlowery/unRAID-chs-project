@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" class="noVNC_loading">
+<head>
+
+    <!--
+    noVNC example: simple example using default UI
+    Copyright (C) 2019 The noVNC Authors
+    noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+    This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+
+    Connect parameters are provided in query string:
+        http://example.com/?host=HOST&port=PORT&encrypt=1
+    or the fragment:
+        http://example.com/#host=HOST&port=PORT&encrypt=1
+    -->
+    <title>noVNC</title>
+
+    <meta charset="utf-8">
+
+    <!-- Always force latest IE rendering engine (even in intranet) & Chrome Frame
+                Remove this if you use the .htaccess -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+    <!-- Icons (see Makefile for what the sizes are for) -->
+    <link rel="icon" sizes="16x16" type="image/png" href="novnc/app/images/icons/novnc-16x16.png">
+    <link rel="icon" sizes="24x24" type="image/png" href="novnc/app/images/icons/novnc-24x24.png">
+    <link rel="icon" sizes="32x32" type="image/png" href="novnc/app/images/icons/novnc-32x32.png">
+    <link rel="icon" sizes="48x48" type="image/png" href="novnc/app/images/icons/novnc-48x48.png">
+    <link rel="icon" sizes="60x60" type="image/png" href="novnc/app/images/icons/novnc-60x60.png">
+    <link rel="icon" sizes="64x64" type="image/png" href="novnc/app/images/icons/novnc-64x64.png">
+    <link rel="icon" sizes="72x72" type="image/png" href="novnc/app/images/icons/novnc-72x72.png">
+    <link rel="icon" sizes="76x76" type="image/png" href="novnc/app/images/icons/novnc-76x76.png">
+    <link rel="icon" sizes="96x96" type="image/png" href="novnc/app/images/icons/novnc-96x96.png">
+    <link rel="icon" sizes="120x120" type="image/png" href="novnc/app/images/icons/novnc-120x120.png">
+    <link rel="icon" sizes="144x144" type="image/png" href="novnc/app/images/icons/novnc-144x144.png">
+    <link rel="icon" sizes="152x152" type="image/png" href="novnc/app/images/icons/novnc-152x152.png">
+    <link rel="icon" sizes="192x192" type="image/png" href="novnc/app/images/icons/novnc-192x192.png">
+    <!-- Firefox currently mishandles SVG, see #1419039
+    <link rel="icon" sizes="any" type="image/svg+xml" href="novnc/app/images/icons/novnc-icon.svg">
+    -->
+    <!-- Repeated last so that legacy handling will pick this -->
+    <link rel="icon" sizes="16x16" type="image/png" href="novnc/app/images/icons/novnc-16x16.png">
+
+    <!-- Apple iOS Safari settings -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Home Screen Icons (favourites and bookmarks use the normal icons) -->
+    <link rel="apple-touch-icon" sizes="60x60" type="image/png" href="novnc/app/images/icons/novnc-60x60.png">
+    <link rel="apple-touch-icon" sizes="76x76" type="image/png" href="novnc/app/images/icons/novnc-76x76.png">
+    <link rel="apple-touch-icon" sizes="120x120" type="image/png" href="novnc/app/images/icons/novnc-120x120.png">
+    <link rel="apple-touch-icon" sizes="152x152" type="image/png" href="novnc/app/images/icons/novnc-152x152.png">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="novnc/app/styles/base.css?ts=1576905587">
+
+    <!-- this is included as a normal file in order to catch script-loading errors as well -->
+    <script type="text/javascript" src="novnc/app/error-handler.js?ts=1576905587"></script>
+
+    <!-- begin scripts -->
+    <!-- promise polyfills promises for IE11 -->
+    <script src="novnc/vendor/promise.js?ts=1576905587"></script>
+    <!-- ES2015/ES6 modules polyfill -->
+    <script nomodule src="novnc/vendor/browser-es-module-loader/dist/browser-es-module-loader.js?ts=1576905587"></script>
+    <!-- actual script modules -->
+    <script type="module" crossorigin="anonymous" src="novnc/app/ui.js?ts=1576905587"></script>
+    <!-- end scripts -->
+</head>
+
+<body>
+
+    <div id="noVNC_fallback_error" class="noVNC_center">
+        <div>
+            <div>noVNC encountered an error:</div>
+            <br>
+            <div id="noVNC_fallback_errormsg"></div>
+        </div>
+    </div>
+
+    <!-- noVNC Control Bar -->
+    <div id="noVNC_control_bar_anchor" class="noVNC_vcenter">
+
+        <div id="noVNC_control_bar">
+            <div id="noVNC_control_bar_handle" title="隐藏/显示控制条"><div></div></div>
+
+            <div class="noVNC_scroll">
+
+            <h1 class="noVNC_logo" translate="no"><span>no</span><br>VNC</h1>
+
+            <!-- Drag/Pan the viewport -->
+            <input type="image" alt="Drag" src="novnc/app/images/drag.svg"
+                id="noVNC_view_drag_button" class="noVNC_button noVNC_hidden"
+                title="移动/拖动窗口">
+
+            <!--noVNC Touch Device only buttons-->
+            <div id="noVNC_mobile_buttons">
+                <input type="image" alt="No mousebutton" src="novnc/app/images/mouse_none.svg"
+                    id="noVNC_mouse_button0" class="noVNC_button"
+                    title="点击鼠标按键">
+                <input type="image" alt="鼠标左键" src="novnc/app/images/mouse_left.svg"
+                    id="noVNC_mouse_button1" class="noVNC_button"
+                    title="点击鼠标按键">
+                <input type="image" alt="鼠标中键" src="novnc/app/images/mouse_middle.svg"
+                    id="noVNC_mouse_button2" class="noVNC_button"
+                    title="点击鼠标按键">
+                <input type="image" alt="鼠标右键" src="novnc/app/images/mouse_right.svg"
+                    id="noVNC_mouse_button4" class="noVNC_button"
+                    title="点击鼠标按键">
+                <input type="image" alt="键盘" src="novnc/app/images/keyboard.svg"
+                    id="noVNC_keyboard_button" class="noVNC_button" title="显示键盘">
+            </div>
+
+            <!-- Extra manual keys -->
+            <div id="noVNC_extra_keys">
+                <input type="image" alt="额外的按键" src="novnc/app/images/toggleextrakeys.svg"
+                    id="noVNC_toggle_extra_keys_button" class="noVNC_button"
+                    title="显示额外的按键">
+                <div class="noVNC_vcenter">
+                <div id="noVNC_modifiers" class="noVNC_panel">
+                    <input type="image" alt="Ctrl" src="novnc/app/images/ctrl.svg"
+                        id="noVNC_toggle_ctrl_button" class="noVNC_button"
+                        title="切换 Ctrl">
+                    <input type="image" alt="Alt" src="novnc/app/images/alt.svg"
+                        id="noVNC_toggle_alt_button" class="noVNC_button"
+                        title="切换 Alt">
+                    <input type="image" alt="Windows" src="novnc/app/images/windows.svg"
+                        id="noVNC_toggle_windows_button" class="noVNC_button"
+                        title="切换 Windows">
+                    <input type="image" alt="Tab" src="novnc/app/images/tab.svg"
+                        id="noVNC_send_tab_button" class="noVNC_button"
+                        title="发送 Tab">
+                    <input type="image" alt="Esc" src="novnc/app/images/esc.svg"
+                        id="noVNC_send_esc_button" class="noVNC_button"
+                        title="发送 Escape">
+                    <input type="image" alt="Ctrl+Alt+Del" src="novnc/app/images/ctrlaltdel.svg"
+                        id="noVNC_send_ctrl_alt_del_button" class="noVNC_button"
+                        title="发送 Ctrl-Alt-Del">
+                </div>
+                </div>
+            </div>
+
+            <!-- Shutdown/Reboot -->
+            <input type="image" alt="关机/重启" src="novnc/app/images/power.svg"
+                id="noVNC_power_button" class="noVNC_button"
+                title="关机/重启...">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_power" class="noVNC_panel">
+                <div class="noVNC_heading">
+                    <img alt="" src="novnc/app/images/power.svg"> Power
+                </div>
+                <input type="button" id="noVNC_shutdown_button" value="关机">
+                <input type="button" id="noVNC_reboot_button" value="重启">
+                <input type="button" id="noVNC_reset_button" value="重置">
+            </div>
+            </div>
+
+            <!-- Clipboard -->
+            <input type="image" alt="剪贴板" src="novnc/app/images/clipboard.svg"
+                id="noVNC_clipboard_button" class="noVNC_button"
+                title="剪贴板">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_clipboard" class="noVNC_panel">
+                <div class="noVNC_heading">
+                    <img alt="" src="novnc/app/images/clipboard.svg"> Clipboard
+                </div>
+                <textarea id="noVNC_clipboard_text" rows=5></textarea>
+                <br>
+                <input id="noVNC_clipboard_clear_button" type="button"
+                    value="清除" class="noVNC_submit">
+            </div>
+            </div>
+
+            <!-- Toggle fullscreen -->
+            <input type="image" alt="全屏" src="novnc/app/images/fullscreen.svg"
+                id="noVNC_fullscreen_button" class="noVNC_button noVNC_hidden"
+                title="全屏">
+
+            <!-- Settings -->
+            <input type="image" alt="设置" src="novnc/app/images/settings.svg"
+                id="noVNC_settings_button" class="noVNC_button"
+                title="设置">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_settings" class="noVNC_panel">
+                <ul>
+                    <li class="noVNC_heading">
+                        <img src="novnc/app/images/settings.svg"> Settings
+                    </li>
+                    <li>
+                        <label><input id="noVNC_setting_shared" type="checkbox"> 共享模式</label>
+                    </li>
+                    <li>
+                        <label><input id="noVNC_setting_view_only" type="checkbox"> 仅查看</label>
+                    </li>
+                    <li><hr></li>
+                    <li>
+                        <label><input id="noVNC_setting_view_clip" type="checkbox"> Clip to Window</label>
+                    </li>
+                    <li>
+                        <label for="noVNC_setting_resize">Scaling Mode:</label>
+                        <select id="noVNC_setting_resize" name="vncResize">
+                            <option value="off">无</option>
+                            <option value="scale">Local Scaling</option>
+                            <option value="remote">Remote Resizing</option>
+                        </select>
+                    </li>
+                    <li><hr></li>
+                    <li>
+                        <div class="noVNC_expander">高级</div>
+                        <div><ul>
+                            <li>
+                                <label for="noVNC_setting_repeaterID">Repeater ID:</label>
+                                <input id="noVNC_setting_repeaterID" type="text" value="">
+                            </li>
+                            <li>
+                                <div class="noVNC_expander">WebSocket</div>
+                                <div><ul>
+                                    <li>
+                                        <label><input id="noVNC_setting_encrypt" type="checkbox"> 加密</label>
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_host">主机:</label>
+                                        <input id="noVNC_setting_host">
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_port">端口:</label>
+                                        <input id="noVNC_setting_port" type="number">
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_path">路径:</label>
+                                        <input id="noVNC_setting_path" type="text" value="websockify">
+                                    </li>
+                                </ul></div>
+                            </li>
+                            <li><hr></li>
+                            <li>
+                                <label><input id="noVNC_setting_reconnect" type="checkbox"> 自动重连</label>
+                            </li>
+                            <li>
+                                <label for="noVNC_setting_reconnect_delay">重连延迟 (ms):</label>
+                                <input id="noVNC_setting_reconnect_delay" type="number">
+                            </li>
+                            <li><hr></li>
+                            <li>
+                                <label><input id="noVNC_setting_show_dot" type="checkbox"> 无光标时显示点</label>
+                            </li>
+                            <li><hr></li>
+                            <!-- Logging selection dropdown -->
+                            <li>
+                                <label>Logging:
+                                    <select id="noVNC_setting_logging" name="vncLogging">
+                                    </select>
+                                </label>
+                            </li>
+                        </ul></div>
+                    </li>
+                    <li class="noVNC_version_separator"><hr></li>
+                    <li class="noVNC_version_wrapper">
+                        <span>版本:</span>
+                        <span class="noVNC_version"></span>
+                    </li>
+                </ul>
+            </div>
+            </div>
+
+            <!-- Connection Controls -->
+            <input type="image" alt="断开连接" src="novnc/app/images/disconnect.svg"
+                id="noVNC_disconnect_button" class="noVNC_button"
+                title="断开连接">
+
+            </div>
+        </div>
+
+        <div id="noVNC_control_bar_hint"></div>
+
+    </div> <!-- End of noVNC_control_bar -->
+
+    <!-- Status Dialog -->
+    <div id="noVNC_status"></div>
+
+    <!-- Connect button -->
+    <div class="noVNC_center">
+        <div id="noVNC_connect_dlg">
+            <div class="noVNC_logo" translate="no"><span>no</span>VNC</div>
+            <div id="noVNC_connect_button"><div>
+                <img alt="" src="novnc/app/images/connect.svg"> Connect
+            </div></div>
+        </div>
+    </div>
+
+    <!-- Password Dialog -->
+    <div class="noVNC_center noVNC_connect_layer">
+    <div id="noVNC_password_dlg" class="noVNC_panel"><form>
+        <ul>
+            <li>
+                <label>密码:</label>
+                <input id="noVNC_password_input" type="password">
+            </li>
+            <li>
+                <input id="noVNC_password_button" type="submit" value="发送密码" class="noVNC_submit">
+            </li>
+        </ul>
+    </form></div>
+    </div>
+
+    <!-- Transition Screens -->
+    <div id="noVNC_transition">
+        <div id="noVNC_transition_text"></div>
+        <div>
+        <input type="button" id="noVNC_cancel_reconnect_button" value="取消" class="noVNC_submit">
+        </div>
+        <div class="noVNC_spinner"></div>
+    </div>
+
+    <!-- This is where the RFB elements will attach -->
+    <div id="noVNC_container">
+        <!-- Note that Google Chrome on Android doesn't respect any of these,
+             html attributes which attempt to disable text suggestions on the
+             on-screen keyboard. Let's hope Chrome implements the ime-mode
+             style for example -->
+        <textarea id="noVNC_keyboardinput" autocapitalize="off"
+            autocomplete="off" spellcheck="false" tabindex="-1"></textarea>
+    </div>
+
+    <audio id="noVNC_bell">
+        <source src="novnc/app/sounds/bell.oga" type="audio/ogg">
+        <source src="novnc/app/sounds/bell.mp3" type="audio/mpeg">
+    </audio>
+ </body>
+</html>

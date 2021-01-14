@@ -1,0 +1,49 @@
+Menu="Main:4"
+Title="未分配的设备"
+Tag="unlink"
+Cond="((count($devs)>0)&&($var['fsState']=='Started'))"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$tabX = '#tab'.($var['fsState']=='Stopped'||is_dir('/mnt/cache') ? '4' : '3');
+?>
+<script>
+function open_status() {
+  $.post('/webGui/include/DeviceList.php',{path:'<?=addslashes(htmlspecialchars($path))?>',device:'open'},function(data) {
+    if (data) {$('#open_devices').html(data); display_diskio();}
+<?if ($var['fsState']=='Started'):?>
+    timers.open_status = setTimeout(open_status,3000);
+<?endif;?>
+  });
+}
+<?if ($var['fsState']=='Started'):?>
+$('<?=$tabX?>').bind({click:function() {$('i.toggle').show('slow');}});
+<?endif;?>
+
+open_status();
+</script>
+
+<table class="disk_status wide">
+<thead><tr><td>设备</td><td>识别号</td><td>温度</td><td>读取</td><td>写入</td><td>错误</td><td>FS</td><td>大小</td><td>已使用</td><td>剩余</td><td>查看</td></tr></thead>
+<tbody id="open_devices">
+<?
+foreach ($devs as $dev):
+  echo "<tr><td colspan='11'>&nbsp;</td></tr>";
+endforeach;
+?>
+</tbody>
+</table>
+
+> 这些设备安装在服务器中, 但未分配给受奇偶校验保护的
+> 阵列或缓存磁盘/池.

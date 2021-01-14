@@ -1,0 +1,133 @@
+Menu="Disk Share"
+Title="NFS 安全设置"
+Tag="linux"
+Cond="(($var['shareNFSEnabled']!='no') && (isset($name)?array_key_exists($name,$sec_nfs):0))"
+---
+<?PHP
+/* Copyright 2005-2018, Lime Technology
+ * Copyright 2012-2018, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+$width = [123,300];
+?>
+> *读取设置从* 用于使用现有共享的设置预设当前选定共享的 NFS 安全设置.
+>
+> 选择所需的共享名, 然后点击 **读取** 从所选源复制 NFS 安全设置.
+>
+> *写入设置到* 用于将当前选定共享的 NFS 安全设置复制到一个或多个其他现有共享.
+>
+> 选择所需的目标并点击 **写入** 将 NFS 安全设置复制到所选共享.
+
+<div class="clone1">
+<span class="clone">读取设置从</span><i class="fa fa-arrow-left clone"></i>
+<select name="readnfs" size="1" class="clone" onchange="toggleButton('readnfs',false)">
+<option disabled selected>选择...</option>
+<?
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) echo mk_option("", $list['name'], $list['name']);
+}
+?>
+</select><input type="button" id="readnfs" value="Read" class="clone" onclick="readNFS()" disabled>
+</div>
+<div class="clone2">
+<span class="clone">写入设置到</span><i class="fa fa-arrow-right clone"></i>
+<select id="nfs1" name="writenfs" size="1" multiple="multiple" style="display:none" onchange="toggleButton('writenfs',this.id)">
+<?
+$rows = [];
+if (isset($disks[$name])) {
+  foreach (array_filter($disks,'clone_list') as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], my_disk($list['name']));
+} else {
+  foreach ($shares as $list) if ($list['name']!=$name) $rows[] = mk_option("", $list['name'], $list['name']);
+}
+if ($rows) echo "<option>(全部)</option>";
+foreach ($rows as $row) echo $row;
+?>
+</select><input type="button" id="writenfs" value="Write" class="clone" onclick="writeNFS()" disabled>
+</div>
+
+<form markdown="1" name="nfs_edit" method="POST" action="/update.htm" target="progressFrame" onchange="toggleButton('writenfs',true);$('#nfs1').dropdownchecklist('disable')">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+
+共享名称:
+: <span class="big"><?=htmlspecialchars($name)?></span>
+
+导出:
+: <select name="shareExportNFS" size="1">
+  <?=mk_option($sec_nfs[$name]['export'], "-", "否");?>
+  <?=mk_option($sec_nfs[$name]['export'], "e", "是");?>
+  </select>
+
+安全:
+: <select name="shareSecurityNFS" size="1">
+  <?=mk_option($sec_nfs[$name]['security'], "public", "公开");?>
+  <?=mk_option($sec_nfs[$name]['security'], "secure", "安全");?>
+  <?=mk_option($sec_nfs[$name]['security'], "private", "私有");?>
+  </select>
+
+&nbsp;
+: <input type="submit" name="changeShareSecurityNFS" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+<?if ($sec_nfs[$name]['security']=="private"):?>
+<form markdown="1" method="POST" name="otherForm" action="/update.htm" target="progressFrame">
+<input type="hidden" name="shareName" value="<?=htmlspecialchars($name)?>">
+规则:
+: <input type="text" name="shareHostListNFS" maxlength="256" value="<?=htmlspecialchars($sec_nfs[$name]['hostList'])?>">
+
+&nbsp;
+: <input type="submit" name="changeShareAccessNFS" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+<?endif;?>
+
+<script>
+$(function() {
+  initDropdownNFS(false);
+<?if ($tabbed):?>
+<?
+$path=='Shares/Share' ? $t=2 : $t=1;
+if ($var['shareAFPEnabled']!='no') $t++;
+?>
+  $('#tab<?=$t?>').bind({click:function(){initDropdownNFS(true);}});
+<?endif;?>
+});
+function initDropdownNFS(reset) {
+  if (reset) {
+    $('#nfs1').dropdownchecklist('destroy');
+  }
+  $("#nfs1").dropdownchecklist({firstItemChecksAll:true, emptyText:'选择...', width:<?=$width[0]?>, explicitClose:'...关闭'});
+}
+function readNFS() {
+  var form = document.nfs_edit;
+  var name = $('select[name="readnfs"]').val();
+  $.get('/webGui/include/ProtocolData.php',{protocol:'nfs',name:name},function(json) {
+    var data = $.parseJSON(json);
+    form.shareExportNFS.value = data.export;
+    form.shareSecurityNFS.value = data.security;
+  });
+  $(form).find('select').trigger('change');
+}
+function writeNFS() {
+  var data = {}, copied = false;
+  data.shareExportNFS = '<?=addslashes(htmlspecialchars($sec_nfs[$name]['export']))?>';
+  data.shareSecurityNFS = '<?=addslashes(htmlspecialchars($sec_nfs[$name]['security']))?>';
+  data.changeShareSecurityNFS = 'Apply';
+  $('select#nfs1 option').map(function() {
+    if ($(this).prop('selected')==true && $(this).val()!='(All)') {
+      data.shareName = $(this).val();
+      $.post('/update.htm', data);
+      copied = true;
+    }
+  });
+  if (copied) swal({title:'克隆完成',text:'NFS 安全设置已写入所选共享',type:'success'},function(){refresh();});
+}
+</script>

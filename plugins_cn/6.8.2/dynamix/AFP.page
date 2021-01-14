@@ -1,0 +1,76 @@
+Menu="NetworkServices:1"
+Title="AFP"
+Icon="icon-apple"
+Tag="apple"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<div class='notice' style='margin-bottom:24px'>请注意 AFP <strong>不推荐使用</strong>, 请使用 SMB.</div>
+
+<form markdown="1" method="POST" action="/update.htm" target="progressFrame">
+启用 AFP:
+: <select name="shareAFPEnabled" size="1">
+  <?=mk_option($var['shareAFPEnabled'], "no", "否");?>
+  <?=mk_option($var['shareAFPEnabled'], "yes", "是");?>
+  </select>
+
+> 选择 '是' 启用[AFP] (/Help) 协议支持.
+>
+> 注意: 在阵列启动时更改此值可能会导致网络服务短暂中断.
+
+已连接的用户:
+: <?if ($var['shareAFPEnabled']=="yes"):
+      $AFPUsers = exec("ps anucx|grep -c 'afpd'");
+      if ($AFPUsers>0) $AFPUsers--;
+      echo $AFPUsers;
+    else:
+      echo "<i>不可用</i>";
+    endif;?>
+
+&nbsp;
+: <input type="submit" name="changeShare" value="Apply" disabled><input type="button" value="完成" onclick="done()">
+</form>
+
+> ### 概览:
+> AFP for Unraid 包括用于实现 Apple Filing 协议的 `netatalk` 和 `avahi`
+> 实施 Zeroconf, 又名 Bonjour.
+>
+> 与 SMB 和 NFS 一样, 您可以通过 AFP 导出磁盘共享和用户共享. 有一些重要的
+> 但是要注意的限制:
+>
+> * 在同时启用磁盘共享的情况下启用磁盘共享的 AFP 导出时, 您必须非常小心
+> 用于用户共享. 这是因为 `netatalk` 在共享根目录中创建了多个系统目录,
+> 这些目录将显示为用户共享. 为防止这种情况, 您可以排除磁盘
+> 在 [共享设置] (/Settings/ShareSettings) 页面上从用户共享文件系统中访问.
+>
+> * netatalk 文档包括强烈警告, 不要在文件系统中的任何地方使用符号链接
+> 通过 AFP 被驱逐. 
+>
+> AFP for Unraid 支持 Time Machine 和所有三种安全模式. 
+>
+> ### Bonjour
+> 启用AFP后, 带有 `-AFP` 后缀的服务器名称应自动显示在
+> Finder 和 Xserve 图标旁边. 单击此图标允许您使用 AFP 协议浏览服务器共享. 
+>
+> 此外, 如果启用了 SMB, 则还应显示服务器名称 (不带任何后缀). 这提供
+> 使用 SMB 协议访问共享. 
+>
+> ### 其他注释
+> [防止在网络卷上创建.DS_Store文件] (http://hints.macworld.com/article.php?story=2005070300463515) - 来自文章：
+>
+> 为了防止创建这些文件, 请打开 终端 并键入: 
+>
+>     默认写 com.apple.desktopservices DSntWriteNetworkStores true
+>
+> 为了使更改生效, 可能需要注销然后重新登录, 甚至重新启动计算机. 
+>  (这就是文章指出的内容) . 

@@ -1,0 +1,311 @@
+Menu="OtherSettings"
+Type="xmenu"
+Title="访问管理"
+Icon="icon-key"
+Tag="expeditedssl"
+---
+<?PHP
+/* Copyright 2005-2019, Lime Technology
+ * Copyright 2012-2019, Bergware International.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ */
+?>
+<?
+function find_tasks() {
+  global $site;
+  $tasks = [];
+  foreach ($site as $page) {
+    if (empty($page['Menu'])) continue;
+    $menu = strtok($page['Menu'], ' ');
+    switch ($menu[0]) {
+      case '$': $menu = get_ini_key($menu,strtok(' ')); break;
+      case '/': $menu = get_file_key($menu,strtok(' ')); break;
+    }
+    while ($menu !== false) {
+      if (substr($menu,0,5) == 'Tasks') {
+        if (empty($page['Cond'])) $tasks[] = $page['name'];
+        break;
+      }
+      $menu = strtok(' ');
+    }
+  }
+  sort($tasks);
+  return $tasks;
+}
+$keyfile = @file_get_contents($var['regFILE']);
+$isLEcert = file_exists("/boot/config/ssl/certs/certificate_bundle.pem");
+if ($keyfile !== false) $keyfile = base64_encode($keyfile);
+if ($isLEcert) exec("/usr/bin/openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/unraid_bundle.pem",$arrout,$retval_expired);
+$provisionlabel = $isLEcert ? 'Renew' : 'Provision';
+$disabled_provision = $keyfile===false || ($isLEcert && $retval_expired===0) || $var['USE_SSL']!="auto" ? 'disabled' : '';
+$disabled_updatedns = $keyfile!==false && $isLEcert ? '' : 'disabled';
+$internalip = $eth0['IPADDR:0'];
+$tasks = find_tasks();
+?>
+<script>
+function provisionSSL(button) {
+  var oldlabel = $.trim($(button).text());
+  $(button).prop("disabled", true).html("<i class='fa fa-circle-o-notch fa-spin fa-fw'></i> "+oldlabel+"ing");
+  var msg = "Your Let's Encrypt SSL Certificate has been provisioned and a DNS record for local IP address <?=$internalip?> has been created on unraid.net.";
+  var failure = function(data) {
+    var status = data.status;
+    var obj = data.responseJSON;
+    msg = "Sorry, an error ("+status+") occurred "+oldlabel.toLowerCase()+"ing your SSL certificate. " +
+          "The error is: "+obj.error+".";
+    $(button).prop("disabled", false).html(oldlabel);
+    swal("Oops",msg,"error");
+  };
+  var success_provision = function(data) {
+    if (data.bundle) {
+      if (oldlabel == 'Renew') {
+        msg = "Your Let's Encrypt SSL Certificate has been renewed.";
+        success_rebind_check(data);
+      } else {
+        $.get("//"+data.internal_dns+":<?=$var['PORT']?>/dnscheck",function() {
+          success_rebind_check(data);
+        }).fail(function(){
+          failure({"status":403, "responseJSON":{"error": "您的路由器或DNS服务器已启用DNS重新绑定保护, 阻止了 "+data.internal_dns+" <?=$internalip?> resolution. 有关详细信息和解决方法, 请参见帮助"}});
+        });
+      }
+    } else {
+      failure({"status":403, "responseJSON":{"error": "服务器无法设置 SSL 证书"}});
+    }
+  };
+  var success_rebind_check = function(data) {
+    $.post("/webGui/include/CertUpload.php",{text:data.bundle,csrf_token:"<?=$var['csrf_token']?>"},function(data2) {
+      swal({title:"",text:msg,type:"success",allowEscapeKey:false},function(){button.form.submit();});
+    }).fail(failure);
+  };
+  $.post("/webGui/include/ProvisionCert.php",success_provision).fail(failure);
+}
+function updateDNS(button) {
+  $(button).prop("disabled", true).html("<i class='fa fa-circle-o-notch fa-spin fa-fw'></i> Updating DNS");
+  var failure = function(data) {
+    var status = data.status;
+    var obj = data.responseJSON;
+    var msg = "Sorry, an error ("+status+") occurred updating unraid.net DNS records. The error is: "+obj.error+".";
+    $(button).prop("disabled", false).html("Update DNS");
+    swal('Oops',msg,'error');
+  };
+  var success = function(data) {
+    $(button).prop("disabled", false).html("Update DNS");
+    swal("","Your local IP address <?=$internalip?> has been updated for unraid.net.","success");
+  };
+  $.post("/webGui/include/UpdateDNS.php",success).fail(failure);
+}
+function checkPorts(form) {
+  var check = [{'key':'PORTTELNET','port':'23','text':'TELNET'},{'key':'PORTSSH','port':'22','text':'SSH'},{'key':'PORT','port':'80','text':'HTTP'},{'key':'PORTSSL','port':'443','text':'HTTPS'}];
+  var list = [];
+  for (var i=0; i < check.length; i++) {
+    var key = check[i]['key'];
+    var port = check[i]['port'];
+    var text = check[i]['text'];
+    var item = $(form).find('input[name="'+key+'"]');
+    if (!item.val()) item.val(port);
+    if (item.val() < 1024 && item.val() != port && item.prop('disabled')==false) list.push(text+' ('+item.val()+')');
+    item.prop('disabled',false);
+  }
+  if (list.length > 0) {
+    swal({title:'Non-recommended port'+(list.length>1?'s':''),text:list.join(', ')+'<br>may conflict with well-known services',html:true,type:'warning',showCancelButton:true},function(){form.submit();});
+  } else {
+    form.submit();
+  }
+}
+function updateTELNET(form) {
+  form.PORTTELNET.disabled = form.USE_TELNET.value=='no';
+}
+function updateSSH(form) {
+  form.PORTSSH.disabled = form.USE_SSH.value=='no';
+}
+function updateSSL(form) {
+  form.PORTSSL.disabled = form.USE_SSL.value=='no';
+}
+$(function(){
+  var form = document.SSLSettings;
+  updateTELNET(form);
+  updateSSH(form);
+  updateSSL(form);
+});
+</script>
+<form markdown="1" name="SSLSettings" method="POST" action="/update.htm" target="progressFrame">
+<input type="hidden" name="changePorts" value="apply">
+开始页面:
+: <select name="START_PAGE" size="1">
+<?foreach ($tasks as $task) echo mk_option($var['START_PAGE']??'Main', $task, $task);?>
+  </select>
+
+> 选择入 GUI 时首先打开的页. 默认页面为 Main 页面。
+
+<!--
+限制访问:
+: <select name="BIND_MGT" size="1" class="narrow">
+  <?=mk_option($var['BIND_MGT'], "no", "否")?>
+  <?=mk_option($var['BIND_MGT'], "yes", "是")?>
+  </select>
+
+> 默认情况下, 在系统的所有活动接口上都可以使用 GUI, SSH 和 TELNET 访问.
+>
+> *限制访问* 仅限制对管理接口 (eth0) 的 GUI, SSH 和 TELNET 访问.
+-->
+
+使用 TELNET:
+: <select name="USE_TELNET" size="1" onchange="updateTELNET(this.form)">
+  <?=mk_option($var['USE_TELNET'], "no", "否")?>
+  <?=mk_option($var['USE_TELNET'], "yes", "是")?>
+  </select>
+
+> TELNET 访问默认情况下是启用的. TELNET 是一种不安全的 CLI 访问类型,
+> 强烈建议使用 SSH 访问, 并禁用 TELNET 访问.
+
+TELNET 端口:
+: <input type="number" name="PORTTELNET" class="narrow" min="1" max="65535" value="<?=htmlspecialchars($var['PORTTELNET']??23)?>">
+
+> 输入 TELNET 端口, 默认端口为 23.
+
+使用 SSH:
+: <select name="USE_SSH" size="1" onchange="updateSSH(this.form)">
+  <?=mk_option($var['USE_SSH'], "no", "否")?>
+  <?=mk_option($var['USE_SSH'], "yes", "是")?>
+  </select>
+
+> SSH 访问默认情况下是启用的, 并提供一种安全的 CLI 访问方式. 在系统启动时如果还不存在 SSH 密钥, 则会自动生成该密钥.
+> 并将其存储在 Flash 设备的 */config/ssh* 文件夹中.
+
+SSH 端口:
+: <input type="number" name="PORTSSH" class="narrow" min="1" max="65535" value="<?=htmlspecialchars($var['PORTSSH']??22)?>">
+
+> 输入 SSH 端口, 默认端口为 22
+
+使用 UPnP:
+: <select name="USE_UPNP" size="1">
+  <?=mk_option($var['USE_UPNP'], "yes", "是")?>
+  <?=mk_option($var['USE_UPNP'], "no", "否")?>
+  </select>
+
+> 在服务器上启用 (默认) 或禁用 UPnP 功能. 此功能允许路由器上端口的自动转发, 仅当路由器本身启用了 UPnP 时才适用.
+
+使用 SSL/TLS:
+: <select name="USE_SSL" size="1" onchange="updateSSL(this.form)">
+  <?=mk_option($var['USE_SSL'], "auto", "自动")?>
+  <?=mk_option($var['USE_SSL'], "no", "否")?>
+  <?=mk_option($var['USE_SSL'], "yes", "是")?>
+  </select>
+
+> 确定 webGUI 如何响应 HTTP 和/或 HTTPS 协议.
+>
+> 选择 **否** 以禁用 HTTPS
+>
+> 选择 **是** 将启用 HTTPS 并将 HTTP 重定向到 HTTPS. 如果尚未设置 Let's Encrypt SSL 证书
+> 则将使用自动生成的自签名 SSL 证书.
+>
+> 如果您正在使用或计划使用由 Lime Technology 提供的 Let's Encrypt SSL 证书, 请选择 **自动**
+> 在设置证书之前, webGUI 将保持 http 模式, 设置之后, webGUI 会自动切换到 https 模式.
+> 除此之外, 还启用了两个后台进程:
+>
+> - *updatedns* - 这将在服务器重新启动完成 30 秒后开始, 并联系 Lime Technology DNS服务
+> 以注册服务器本地IP地址. 在此之后, 它每 10 分钟唤醒一次, 以防本地 IP 地址再次更改.
+>
+> - *renewcert* - 这将在服务器重新启动完成 60 秒后启动, 并与 Lime Technology 证书续订服务联系, 
+> 以确定是否需要续订 Let's Encrypt SSL 证书.
+> 此后, 它每 24 小时唤醒一次. 如果在到期 30 天内, 将自动下载新证书并设置到服务器.
+>
+> 注意: 在设置 Let's Encrypt SSL 证书之后, 您可以通过将此字段更改为 **是** 来
+> 关闭 *updatedns* 和 *newcert* 的后台进程.
+>
+> **nginx 证书处理详细信息**
+>
+> Nginx 启动脚本按以下顺序在 USB 引导驱动器上查找 SSL 证书:<br>
+> `config/ssl/certs/certificate_bundle.pem`<br>
+> `config/ssl/certs/<server-name>_unraid_bundle.pem`
+>
+> 如果两个文件都不存在, 则会自动创建自签名的 SSL 证书并将其存储在<br>
+> `config/ssl/certs/<server-name>_unraid_bundle.pem`<br>
+>
+> 设置 Let's Encrypt 将证书写入到<br>
+> `config/ssl/certs/certificate_bundle.pem`<br>
+>
+> **nginx stapling 支持**
+>
+> Nginx 是否启用 OCSP Staping 取决于正在使用的证书:<br>
+> `config/ssl/certs/certificate_bundle.pem` => 是<br>
+> `config/ssl/certs/<server-name>_unraid_bundle.pem` => 否
+
+HTTP 端口:
+: <input type="number" name="PORT" class="narrow" min="1" max="65535" value="<?=htmlspecialchars($var['PORT']??80)?>">
+
+> 输入 HTTP 端口, 默认端口为 80.
+
+HTTPS 端口:
+: <input type="number" name="PORTSSL" class="narrow" min="1" max="65535" value="<?=htmlspecialchars($var['PORTSSL']??443)?>">
+
+> 输入 HTTPS 端口, 默认端口为 443.
+
+本地 TLD:
+: <input type="text" name="LOCAL_TLD" class="narrow" value="<?=htmlspecialchars($var['LOCAL_TLD'])?>">
+
+> 输入您的本地顶级域, 可能为空.
+
+&nbsp;
+: <input type="button" value="Apply" onclick="checkPorts(this.form)" disabled><input type="button" value="完成" onclick="done()">
+
+</form>
+<div style="height:24px"></div>
+<form markdown="1" name="Provision" method="POST" action="/update.htm" target="progressFrame">
+<input type="hidden" name="changePorts" value="apply">
+证书颁发者:
+: <?=shell_exec("/usr/bin/openssl x509 -text -noout -in /etc/ssl/certs/unraid_bundle.pem|sed -n -e 's/^.*Issuer: //p'")?>
+
+<?
+$time = strtotime(exec("/usr/bin/openssl x509 -text -noout -in /etc/ssl/certs/unraid_bundle.pem|sed -n -e 's/^.*Not After : //p'"));
+$format = $display['date'].($display['date']!='%c' ? ', '.str_replace(['%M','%R'],['%M:%S','%R:%S'],$display['time']):'');
+?>
+证书过期:
+: <?=strftime($format, $time)?>
+
+&nbsp;
+: <button type="button" onclick="provisionSSL(this)" <?=$disabled_provision?>><?=$provisionlabel?></button><button type="button" onclick="updateDNS(this)" <?=$disabled_updatedns?>>更新 DNS</button>
+
+> **Provision** 可用于从 [Let's Encrypt] (https://letsencrypt.org/) 分配 *免费* SSL 证书,
+> 然后上载到服务器. 注意: 在这种情况下, 我们 **强烈** 建议使用静态 IP 地址.
+
+> **更新 DNS** 可用于在 unraid.net 上手动启动更新服务器 FQDN 的 DNS A记录. 
+> 注意, DNS 更改可能需要 1 分钟到几个小时 (我们将 TTL 设置为 60 秒).
+
+> 注意:  如果您的路由器或上游 DNS 服务器 **提供** 了
+> [DNS 重定向保护](https://en.wikipedia.org/wiki/DNS_rebinding) 则设置可能会失败
+> DNS 重定向保护是可防止 DNS 解析到专用 IP 网络范围. DNS 重定向保护是指本地 LAN 上的一项安全功能
+> 其中包括带有错误/不安全 "web" 接口的旧设备.
+
+> DNS 重定向保护的一个来源可能是您的 ISP DNS 服务器. 在这种情况下, 可以通过切换到不同的 DNS 服务器 (如 Google 的公共 DNS) 来解决问题.
+
+> 更常见的是, 可以在路由器中启用 DNS 重定向保护. 大多数使用者路由器不支持 DNS 重定向保护; 
+> 但是, 如果它们支持了, 则应提供配置设置以将其关闭.
+
+> 但是, 高端路由器通常支持启用 DNS 重定向保护. 通常有一些方法可以根据域完全或有选择地关闭它. 
+> 示例:
+
+> **DD-WRT:** 如果在启用 DNS 重定向保护的情况下使用 "dnsmasq", 则可以将此行添加到路由器配置文件:
+
+> `rebind-domain-ok=/unraid.net/`
+
+> **pfSense:** 如果使用的是 pfSense 内部 DNS 解析程序服务, 则可以添加以下自定义选项行:
+
+> `server:`<br>
+> `private-domain: "unraid.net"`
+
+> **Ubiquiti USG 路由器:** 您可以添加以下配置行:
+
+> `set service dns forwarding options rebind-domain-ok=/unraid.net/`
+
+> **OpenDNS:** Go to Settings -> Security and *remove* the checkbox next to
+>  "Suspicious Responses - Block internal IP addresses". It is an all-or-nothing setting.
+
+> 当所有其他操作失败时, 您可以在 PC 的 *hosts* 文件中创建一个条目来覆盖外部 DNS, 并直接将服务器 unraid.net FQDN 解析为其本地 IP 地址.
+
+</form>
