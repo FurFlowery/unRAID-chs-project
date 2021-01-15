@@ -3,7 +3,7 @@ unRAID 中文化项目
 
 原项目地址(已失效):https://github.com/KleinerSource/unRAID-chs-project
 
-本项目Fork原项目，并且修复了脚本失效问题
+本项目Fork原项目，从V2.0开始接手此项目，在原插件基础上新增一些插件的翻译以及修正一些翻译问题
 
 基于 unRAID Server Web 控制台 的汉化项目.
 
@@ -11,7 +11,7 @@ unRAID 中文化项目
 
 支持作为 插件, 重新封包(bzroot), sftp上传, 等方式使用.
 
-请注意，由于unraid插件安装方式的特性，项目fork无用，依然会从本项目下载插件相关文件，需要修改相关安装脚本才可以。
+请注意，由于unraid插件安装方式的特性，项目Fork无用，依然会从本项目下载插件相关文件，需要修改相关安装脚本才可以。
 
 ### 插件方式:
 登录 unraid web面板 选择插件页面
@@ -37,7 +37,7 @@ Gitee源由于Gitee将插件的txz包当作shell处理提供给unraid，导致�
 
 ### 更新日志  
   
-#### 2.0(2021-01-14)  
+#### V2.0(2021-01-14)  
   
 新增翻译  
 1、新增"插件商店"(Community Applications)插件翻译  
@@ -58,6 +58,12 @@ Gitee源由于Gitee将插件的txz包当作shell处理提供给unraid，导致�
 5、系统状态Dynamix System Statistics   
 待添加......
   
+### 目录说明
+
+release - 打包后的插件以及插件安装脚本
+plugins_cn - 插件及系统翻译
+gui/usr/share/fonts - 中文字体
+
 ### sftp上传方式:
 在unraid启动完成后 利用winscp等软件 连接到unraid ssh 将文件复制到 /usr/local/emhttp/plugins 中. 刷新页面即可.
 
