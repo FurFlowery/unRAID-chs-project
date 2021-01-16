@@ -11,7 +11,7 @@ unRAID 中文化项目
 
 安装方法以及常见问题等请见项目Wiki [点我](https://github.com/yunlancn/unRAID-chs-project/wiki)
   
-遇到问题可以提交 ISSUES 给我.
+遇到问题可以提交 ISSUES 或者填写[问卷](https://wj.qq.com/s2/7881329/40b6/)给我
 
 ## 安装脚本地址
 
