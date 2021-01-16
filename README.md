@@ -41,4 +41,4 @@ unRaid 6.8.2: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/mas
 还没有人Q..Q
 
 ## 贡献感谢
-[KleinerSource](https://github.com/KleinerSource/)
+[KleinerSource](https://github.com/KleinerSource/)(插件原作者)
