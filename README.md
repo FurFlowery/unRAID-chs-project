@@ -26,8 +26,15 @@ unRaid 6.8.1: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/mas
 unRaid 6.8.2: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/urchs.682.plg`
 
 ## 如果不介意的话，请我喝杯咖啡吧
-如果想在感谢列表里出现，记得写备注  
-<img src="https://cdn.img.dxmc.net/imgs/2021/01/12369f98820836c8.jpg" width = "315" height = "490" alt="支付宝" align=center />  
+
+如果想在感谢列表出现，记得写备注
+
+### 支付宝
+
+<img src="https://cdn.img.dxmc.net/imgs/2021/01/12369f98820836c8.jpg" width = "315" height = "490" alt="支付宝" align=center /> 
+
+### 微信
+ 
 <img src="https://cdn.img.dxmc.net/imgs/2021/01/d3294592be36e533.png" width = "300" height = "408" alt="微信" align=center />  
 
 ## 赞助列表
