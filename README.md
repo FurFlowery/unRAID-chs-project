@@ -7,13 +7,9 @@ unRAID 中文化项目
 
 基于 unRAID Server Web 控制台 的汉化项目.  
 
-让国内用户更好的体验 unRAID Server.  
+让国内用户更好的体验 unRAID Server.    
 
-支持作为 插件, 重新封包(bzroot), sftp上传, 等方式使用.  
-
-请注意，由于unraid插件安装方式的特性，项目Fork无用，依然会从本项目下载插件相关文件，需要修改相关安装脚本才可以。  
-
-安装方法以及常见问题等请见项目Wiki [点我](https://github.com/yunlancn/unRAID-chs-project/wiki"点我")
+安装方法以及常见问题等请见项目Wiki [点我](https://github.com/yunlancn/unRAID-chs-project/wiki)
   
 遇到问题可以提交 ISSUES 给我.
 
