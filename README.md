@@ -38,7 +38,7 @@ unRaid 6.8.2: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/mas
 <img src="https://cdn.img.dxmc.net/imgs/2021/01/d3294592be36e533.png" width = "300" height = "408" alt="微信" align=center />  
 
 ## 赞助列表
-还没有人Q..Q
+先生 - 50RMB
 
 ## 贡献感谢
 [KleinerSource](https://github.com/KleinerSource/)(插件原作者)
