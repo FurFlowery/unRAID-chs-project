@@ -3,7 +3,7 @@
 <!ENTITY title      "unRAID 简体中文汉化包">
 <!ENTITY name      "urchs.682">
 <!ENTITY author    "YunLan">
-<!ENTITY version   "v2.1">
+<!ENTITY version   "v2.0">
 <!ENTITY github    "https://github.com/yunlancn/unRAID-chs-project">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/&name;.plg">
 ]>
