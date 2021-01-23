@@ -16,12 +16,12 @@ unRAID 中文化项目
 ## 安装脚本地址
 
 ### 自建源(服务器位于台湾，建议国内使用)：  
-unRaid 6.8.1: `https://file.dxmc.net/Github/unRAID-chs-project/release/urchs.681.plg`
+~~unRaid 6.8.1: `https://file.dxmc.net/Github/unRAID-chs-project/release/urchs.681.plg`~~
 
 unRaid 6.8.2: `https://file.dxmc.net/Github/unRAID-chs-project/release/urchs.682.plg`
 
 ### Github源(建议海外使用)：
-unRaid 6.8.1: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/urchs.681.plg`
+~~unRaid 6.8.1: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/urchs.681.plg`~~
 
 unRaid 6.8.2: `https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/urchs.682.plg`
 
