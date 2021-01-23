@@ -1,0 +1,61 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY title      "Community Application 中文汉化">
+<!ENTITY name      "community.applications.chs">
+<!ENTITY author    "YunLan">
+<!ENTITY version   "v1.0">
+<!ENTITY github    "https://github.com/yunlancn/unRAID-chs-project">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/plugins/community.applications/&name;.plg">
+]>
+
+<PLUGIN name="&title;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.8.2" max="6.8.2" support="" icon="users">
+
+<CHANGES>
+
+### V1.0  
+- 分离Community Application 汉化
+
+</CHANGES>
+
+
+<!--
+The 'source' file.
+-->
+<FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+<URL>https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/plugins/community.applications/&name;-&version;-x86_64-1.txz</URL>
+</FILE>
+
+<!--
+The 'post-install' script
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+echo ""
+echo "----------------------------------------------------"
+echo " Community Application 中文汉化"
+echo " &name; 安装完成."
+echo " 版本: &version;"
+echo " 注意: 卸载该插件回到原版的话 要重启才会生效 "
+echo " Copyright 2019-2021, YunLan"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!--
+The 'remove' script.
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+rm -rf /boot/config/plugins/&name;
+echo ""
+echo "----------------------------------------------------"
+echo " Community Application 中文汉化"
+echo " &name; 卸载完成."
+echo " 注意: 需要重启才会生效 "
+echo " Copyright 2019-2021, YunLan"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE> 
+</PLUGIN>

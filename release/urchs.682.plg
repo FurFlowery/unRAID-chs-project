@@ -3,7 +3,7 @@
 <!ENTITY title      "unRAID 简体中文汉化包">
 <!ENTITY name      "urchs.682">
 <!ENTITY author    "YunLan">
-<!ENTITY version   "v2.0">
+<!ENTITY version   "v2.1">
 <!ENTITY github    "https://github.com/yunlancn/unRAID-chs-project">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/yunlancn/unRAID-chs-project/master/release/&name;.plg">
 ]>
@@ -11,6 +11,12 @@
 <PLUGIN name="&title;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.8.2" max="6.8.2" support="" icon="users">
 
 <CHANGES>
+
+###v2.1
+- 1、分离插件翻译，如果需要插件翻译，请见项目页面
+- 2、修复DASHBOAED页面Docker运行中的图标为红色的问题
+
+- 由于6.8.1使用人数几乎没有，此版本开始停止6.8.1汉化的支持
 
 ###v2.0
 - 1、新增"插件商店"(Community Applications)插件翻译  
@@ -63,7 +69,7 @@ echo " unRaid Chinese Pakage"
 echo " &name; 安装完成."
 echo " 版本: &version;"
 echo " 注意: 卸载该插件回到原版的话 要重启才会生效 "
-echo " Copyright 2019-2020, YunLan"
+echo " Copyright 2019-2021, YunLan"
 echo "----------------------------------------------------"
 echo ""
 </INLINE>
@@ -80,7 +86,7 @@ echo "----------------------------------------------------"
 echo " unRaid Chinese Pakage"
 echo " &name; 卸载完成."
 echo " 注意: 需要重启才会生效 "
-echo " Copyright 2019-2020, YunLan"
+echo " Copyright 2019-2021, YunLan"
 echo "----------------------------------------------------"
 echo ""
 </INLINE>

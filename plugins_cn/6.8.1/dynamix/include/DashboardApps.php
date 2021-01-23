@@ -48,7 +48,7 @@ if ($_POST['docker'] && ($display=='icons' || $display=='docker')) {
     $menu[] = sprintf("addDockerContainerContext('%s','%s','%s',%s,%s,%s,%s,'%s','%s','%s','%s','%s','%s');", addslashes($name), addslashes($ct['ImageId']), addslashes($template), $running, $paused, $updateStatus, $is_autostart, addslashes($webGui), $shell, $id, addslashes($support), addslashes($project), addslashes($registry));
     $shape = $running ? ($paused ? 'pause' : 'play') : 'square';
     $status = $running ? ($paused ? '已暂停' : '已启动') : '已停止';
-    $color = $status=='started' ? 'green-text' : ($status=='paused' ? 'orange-text' : 'red-text');
+    $color = $status=='已启动' ? 'green-text' : ($status=='已暂停' ? 'orange-text' : 'red-text');
     $update = $updateStatus=='false' ? 'blue-text' : '';
     $icon = $info['icon'] ?: '/plugins/dynamix.docker.manager/images/question.png';
     $image = substr($icon,-4)=='.png' ? "<img src='$icon?".filemtime("$docroot{$info['icon']}")."' class='img'>" : (substr($icon,0,5)=='icon-' ? "<i class='$icon img'></i>" : "<i class='fa fa-$icon img'></i>");
